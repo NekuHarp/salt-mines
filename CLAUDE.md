@@ -1,0 +1,60 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+- `npm run dev` — Start server with nodemon
+- `npm run start` — Start server with node
+- `npm run lint` — Run ESLint
+
+Copy `.env.example` to `.env` and fill in `DATABASE_*` credentials and `SALTY_BET_API_URL` before running.
+
+Migrations are managed via Sequelize CLI (configured in `.sequelizerc`). The first migration reads raw SQL from `src/database/migrations/tables-structures.sql`; subsequent ones are standard Sequelize CJS migration files.
+
+There are no tests.
+
+## Architecture
+
+Express REST API for tracking fighters and head-to-head matchups, with live data scraping from Salty Bet. Three resources: `Fighter`, `Matchup`, `LastBet`.
+
+**Stack:** Node.js (ESM, v24), Express 4, Sequelize 6, MySQL (mysql2), express-validator, helmet, qs
+
+**Request lifecycle:**
+1. `helmet` + `res.fail()` middleware applied globally
+2. `/health_check` handled before JSON body parsing
+3. `express.json()` parses body
+4. Routes under `MAIN_API_ROOT` (currently `""`) → `apiRouter`
+5. `errorHandler` (4-arg) catches anything thrown by controllers
+
+**Key patterns:**
+
+- **`res.fail(errorObject)`** — added by the `fail` middleware (`src/shared/fail.js`); used everywhere for error responses. Error objects (`INTERNAL_SERVER_ERROR`, `NOT_FOUND`, `INVALID_VALUE`) are defined in `src/shared/errors.js` with shape `{ httpCode, message, errorCode }`.
+
+- **Router `.param("uuid", ...)`** — each router validates the `:uuid` param with express-validator, runs `validationErrorHandler`, then `findFighterByUuid`/`findMatchupByUuid`, which loads the model instance into `req.model[ModelName]`. Controllers read from `req.model` rather than querying again.
+
+- **`matchedData(req, { locations, includeOptionals })`** — controllers always use this instead of `req.body`/`req.query` directly to get only validated/sanitized data.
+
+- **`filterAll(query, where)`** — `src/api/utils/filters.js` composes offset/limit/sort/timestamp filters with a per-endpoint `where` object into a single Sequelize `findAndCountAll` options object. Custom field filters support operator arrays: `[operator, value]` or `[operator, min, max]` for ranges (operators defined in `src/constants/api.js` as `FILTER_OPERATORS`).
+
+- **`getSort(value)`** — `src/api/utils/sort.js` translates `"-name"` → `[["name", "DESC"]]` and underscore notation for nested fields (e.g. `"P1_name"` → `[["P1", "name", "ASC"]]`).
+
+- **Validator arrays** — validators are exported as flat arrays of express-validator middleware + `validationErrorHandler` appended at the end. Shared validator builders (`paginationValidatorBuilder`, `sortValidatorBuilder`, `timestampValidator`) live in `src/api/validators/shared/`.
+
+- **Model factory pattern** — each model file exports `(sequelize) => { class Foo extends Sequelize.Model {} ... return Foo; }`. `src/database/models/index.js` is the single import point for all models and the sequelize instance (`db.Fighter`, `db.Matchup`, `db.LastBet`, `db.sequelize`).
+
+**Salty Bet scraping (`src/api/routers/state.js`):**
+- `PUT /state` (`manualDataScrape`) — takes optional `winner: "p1"|"p2"` body; fetches the API, finds or creates both fighters, and if winner is provided, finds or creates the Matchup and increments stats on both fighters and the matchup.
+- `PUT /state/auto` (`autoDataScrape`) — same logic but derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2, other = no stats update). First compares `p1name`, `p2name`, `status` against `LastBet` id=0; if unchanged, returns `{ changed: false }` immediately. Otherwise updates `LastBet` and proceeds.
+
+**Relationships:**
+- `Fighter` hasMany `Matchup` as both `MatchupsAsP1` (foreignKey `p1Uuid`) and `MatchupsAsP2` (foreignKey `p2Uuid`)
+- `Matchup` belongsTo `Fighter` as `P1` and `P2`; deleting a Fighter cascades
+- `LastBet` is a singleton (always id=0, pre-seeded by migration); no associations
+
+## Code Conventions
+
+- ESM throughout (`"type": "module"`); `.sequelizerc` and migration files are the only CommonJS (`.cjs`)
+- 4-space indentation, trailing commas (`es5`)
+- ESLint: sorted imports (warn), no implicit coercion, security plugin, node plugin (`flat/recommended-module`)
+- New resources follow the pattern: `constants/api.js` → `models/` → `validators/` → `controllers/` → `routers/` → register in `api/index.js`
