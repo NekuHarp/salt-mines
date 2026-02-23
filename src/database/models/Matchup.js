@@ -48,17 +48,17 @@ export default (sequelize) => {
             matches: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             p1Wins: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             p2Wins: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             createdAt: { type: Sequelize.DATE(3) },
             updatedAt: { type: Sequelize.DATE(3) },

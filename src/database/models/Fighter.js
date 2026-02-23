@@ -3,17 +3,13 @@ import Sequelize from "sequelize";
 export default (sequelize) => {
     class Fighter extends Sequelize.Model {
         static associate(models) {
-            models.Fighter.belongsTo(models.Matchup, {
+            models.Fighter.hasMany(models.Matchup, {
                 foreignKey: "p1Uuid",
                 as: "MatchupsAsP1",
-                onDelete: "CASCADE",
-                onUpdate: "RESTRICT",
             });
-            models.Fighter.belongsTo(models.Matchup, {
+            models.Fighter.hasMany(models.Matchup, {
                 foreignKey: "p2Uuid",
                 as: "MatchupsAsP2",
-                onDelete: "CASCADE",
-                onUpdate: "RESTRICT",
             });
         }
     }
@@ -35,17 +31,17 @@ export default (sequelize) => {
             matches: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             wins: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             losses: {
                 type: Sequelize.INTEGER.UNSIGNED,
                 allowNull: false,
-                default: 0,
+                defaultValue: 0,
             },
             createdAt: { type: Sequelize.DATE(3) },
             updatedAt: { type: Sequelize.DATE(3) },
