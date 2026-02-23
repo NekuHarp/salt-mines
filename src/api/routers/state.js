@@ -1,6 +1,6 @@
+import { autoDataScrape, manualDataScrape } from "../controllers/index.js";
 import { Router } from "express";
 import { stateSyncValidator } from "../validators/index.js";
-import { autoDataScrape, manualDataScrape } from "../controllers/index.js";
 
 export const stateRouter = Router();
 
