@@ -47,6 +47,13 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 - `GET /state` (`currentMatchupPrediction`) — fetches the API, finds or creates both fighters, and returns `{ p1, p2, p1WinChance }` using `getWinRate` (`src/shared/winRate.js`).
 - `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Accepts optional body `matchesToRecord` (int 1–10, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Validated by `autoScrapeValidator`.
 
+**Background listener (`src/shared/listener.js`, `src/api/routers/listener.js`):**
+- In-process `setInterval`-based service that polls `SALTY_BET_API_URL` every 3s and records match results automatically (fire-and-forget). Managed via `start(params)`, `stop()`, `getStatus()` exports.
+- `GET /listener` — returns `{ active, params }`.
+- `PUT /listener/start` — starts the listener; returns `409` if already running. Optional body `matchesToRecord` (int 1–10) auto-stops after that many matches.
+- `PUT /listener/stop` — stops the listener; returns `409` if not running.
+- Concurrency guard (`processing` flag) prevents overlapping ticks. Errors are silently skipped.
+
 **Win rate calculation (`src/shared/winRate.js`):**
 - `getWinRate(p1Uuid, p2Uuid)` — returns P1's predicted win chance (0–100, max 2 decimals). If head-to-head data exists, blends general and matchup stats with matchup data weighted 10× (1× from general + 9× extra). If no head-to-head data, mocks the rate as `50 + (p1GeneralWinRate - p2GeneralWinRate)`, clamped to [0, 100]. Fighters with no matches default to 0% general win rate.
 

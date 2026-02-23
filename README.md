@@ -85,6 +85,24 @@ When `matchesToRecord` > 1, the endpoint loops, waiting for each successive matc
 
 If a match times out without a winner, the endpoint returns results for all previously completed matches.
 
+### Listener (background scraping)
+
+```
+GET /listener        Listener status
+PUT /listener/start  Start listener
+PUT /listener/stop   Stop listener
+```
+
+**`GET /listener`** — Returns the current listener status: `{ active: boolean, params: { ... } | null }`.
+
+**`PUT /listener/start`** — Starts the background listener. Returns `409` if already running. The listener polls `SALTY_BET_API_URL` every 3 seconds and automatically records match results (fire-and-forget). Accepts an optional body:
+
+| Field              | Type    | Description                                              |
+| ------------------ | ------- | -------------------------------------------------------- |
+| `matchesToRecord`  | integer | Optional (1–10). If provided, the listener auto-stops after recording that many matches. If omitted, runs until manually stopped. |
+
+**`PUT /listener/stop`** — Stops the background listener. Returns `409` if not running.
+
 ## Query Parameters
 
 All list endpoints accept:

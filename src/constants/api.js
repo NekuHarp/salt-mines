@@ -6,6 +6,7 @@ export const MAIN_API_ROOT = "";
 
 export const API_ROUTES = Object.freeze({
     Fighter: "/fighters",
+    Listener: "/listener",
     Matchup: "/matchups",
     State: "/state",
 });
