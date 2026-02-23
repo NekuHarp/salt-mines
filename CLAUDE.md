@@ -43,9 +43,12 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 - **Model factory pattern** — each model file exports `(sequelize) => { class Foo extends Sequelize.Model {} ... return Foo; }`. `src/database/models/index.js` is the single import point for all models and the sequelize instance (`db.Fighter`, `db.Matchup`, `db.LastBet`, `db.sequelize`).
 
-**Salty Bet scraping (`src/api/routers/state.js`):**
-- `PUT /state` (`manualDataScrape`) — takes optional `winner: "p1"|"p2"` body; fetches the API, finds or creates both fighters, and if winner is provided, finds or creates the Matchup and increments stats on both fighters and the matchup.
-- `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Accepts optional body `matchesToRecord` (int 1–10, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Validated by `autoScrapeValidator`.
+**Salty Bet scraping & predictions (`src/api/routers/state.js`):**
+- `GET /state` (`currentMatchupPrediction`) — fetches the API, finds or creates both fighters, and returns `{ p1, p2, p1WinChance }` using `getWinRate` (`src/shared/winRate.js`).
+- `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Accepts optional body `matchesToRecord` (int 1–10, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Validated by `autoScrapeValidator`.
+
+**Win rate calculation (`src/shared/winRate.js`):**
+- `getWinRate(p1Uuid, p2Uuid)` — returns P1's predicted win chance (0–100, max 2 decimals). If head-to-head data exists, blends general and matchup stats with matchup data weighted 10× (1× from general + 9× extra). If no head-to-head data, mocks the rate as `50 + (p1GeneralWinRate - p2GeneralWinRate)`, clamped to [0, 100]. Fighters with no matches default to 0% general win rate.
 
 **Relationships:**
 - `Fighter` hasMany `Matchup` as both `MatchupsAsP1` (foreignKey `p1Uuid`) and `MatchupsAsP2` (foreignKey `p2Uuid`)

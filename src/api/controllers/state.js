@@ -1,14 +1,10 @@
 import db from "../../database/models/index.js";
+import { getWinRate } from "../../shared/index.js";
 import { matchedData } from "express-validator";
 
 const { Fighter, LastBet, Matchup } = db;
 
-export async function manualDataScrape(req, res) {
-    const { winner } = matchedData(req, {
-        locations: ["body"],
-        includeOptionals: true,
-    });
-
+export async function currentMatchupPrediction(req, res) {
     const response = await fetch(process.env.SALTY_BET_API_URL);
     if (!response.ok) {
         return res.fail({
@@ -30,38 +26,9 @@ export async function manualDataScrape(req, res) {
     const [p1] = await Fighter.findOrCreate({ where: { name: p1name } });
     const [p2] = await Fighter.findOrCreate({ where: { name: p2name } });
 
-    let matchup = null;
-    if (winner) {
-        const [winner_fighter, loser_fighter] =
-            winner === "p1" ? [p1, p2] : [p2, p1];
+    const p1WinChance = await getWinRate(p1.uuid, p2.uuid);
 
-        [matchup] = await Matchup.findOrCreate({
-            where: { p1Uuid: p1.uuid, p2Uuid: p2.uuid },
-        });
-
-        await Promise.all([
-            matchup.increment({
-                matches: 1,
-                ...(winner === "p1" ? { p1Wins: 1 } : { p2Wins: 1 }),
-            }),
-            winner_fighter.increment({ matches: 1, wins: 1 }),
-            loser_fighter.increment({ matches: 1, losses: 1 }),
-        ]);
-
-        await Promise.all([
-            matchup.reload(),
-            winner_fighter.reload(),
-            loser_fighter.reload(),
-        ]);
-
-        return res.status(200).json({
-            p1: winner === "p1" ? winner_fighter : loser_fighter,
-            p2: winner === "p1" ? loser_fighter : winner_fighter,
-            matchup,
-        });
-    }
-
-    return res.status(200).json({ p1, p2, matchup });
+    return res.status(200).json({ p1, p2, p1WinChance });
 }
 
 const POLL_INTERVAL_MS = 3000;
@@ -78,7 +45,7 @@ function sleep(ms) {
 }
 
 export async function autoDataScrape(req, res) {
-    const { matchesToRecord } = matchedData(req, {
+    const { matchesToRecord, predictions } = matchedData(req, {
         locations: ["body"],
         includeOptionals: true,
     });
@@ -154,6 +121,11 @@ export async function autoDataScrape(req, res) {
         const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });
         const [p2] = await Fighter.findOrCreate({ where: { name: data.p2name } });
 
+        let p1WinChance;
+        if (predictions) {
+            p1WinChance = await getWinRate(p1.uuid, p2.uuid);
+        }
+
         const [winner_fighter, loser_fighter] =
             winner === "p1" ? [p1, p2] : [p2, p1];
 
@@ -180,6 +152,7 @@ export async function autoDataScrape(req, res) {
             p1: winner === "p1" ? winner_fighter : loser_fighter,
             p2: winner === "p1" ? loser_fighter : winner_fighter,
             matchup,
+            ...(predictions && { p1WinChance }),
         };
     }
 

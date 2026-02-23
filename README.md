@@ -61,30 +61,25 @@ DELETE /matchups/:uuid
 ### State (Salty Bet scraping)
 
 ```
-PUT /state       Manual scrape
+GET /state       Current matchup prediction
 PUT /state/auto  Automatic scrape
 ```
 
-**`PUT /state`** — Fetches `SALTY_BET_API_URL`, finds or creates both fighters from `p1name`/`p2name`. Accepts an optional body:
-
-| Field    | Type            | Description                                          |
-| -------- | --------------- | ---------------------------------------------------- |
-| `winner` | `"p1"` \| `"p2"` | If provided, records the match result and updates stats |
-
-If `winner` is given, finds or creates the Matchup and increments `matches`/`wins`/`losses` on both fighters and the matchup.
+**`GET /state`** (`currentMatchupPrediction`) — Fetches `SALTY_BET_API_URL`, finds or creates both fighters from `p1name`/`p2name`, and returns a win-chance prediction for P1 using `getWinRate` (`src/shared/winRate.js`). Response: `{ p1, p2, p1WinChance }`.
 
 **`PUT /state/auto`** — Derives the winner from the API's `status` field (`"1"` → p1 wins, `"2"` → p2 wins). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, polls every 3 seconds until the data changes. If `status` is not `"1"` or `"2"`, polls every 3 seconds until a winner is determined (7-minute timeout per match). Only creates fighters and records stats when a winner is found. Updates `LastBet` after each match.
 
 | Field              | Type    | Description                                              |
 | ------------------ | ------- | -------------------------------------------------------- |
 | `matchesToRecord`  | integer | Optional (1–10, default `1`). Number of matches to record in a single request. |
+| `predictions`      | boolean | Optional. If `true`, includes `p1WinChance` in each match result (calculated before stats are updated). |
 
 When `matchesToRecord` > 1, the endpoint loops, waiting for each successive match to complete before moving to the next. Each match has its own 7-minute timeout. The response contains results keyed as `Match1`, `Match2`, etc.:
 
 ```json
 {
-  "Match1": { "p1": { ... }, "p2": { ... }, "matchup": { ... } },
-  "Match2": { "p1": { ... }, "p2": { ... }, "matchup": { ... } }
+  "Match1": { "p1": { ... }, "p2": { ... }, "matchup": { ... }, "p1WinChance": 62.07 },
+  "Match2": { "p1": { ... }, "p2": { ... }, "matchup": { ... }, "p1WinChance": 45.3 }
 }
 ```
 
