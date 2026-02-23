@@ -25,8 +25,14 @@ export default {
         password: process.env.DATABASE_PASSWORD,
         database: process.env.DATABASE_NAME,
         host: process.env.DATABASE_HOST,
+        port: parseInt(process.env.DATABASE_PORT, 10) || 4000,
         dialect: "mysql",
         seederStorage: "sequelize",
-        logQueryParameters: true,
+        logQueryParameters: false,
+        dialectOptions: {
+            ssl: {
+                rejectUnauthorized: true,
+            },
+        },
     },
 };
