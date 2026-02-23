@@ -73,7 +73,22 @@ PUT /state/auto  Automatic scrape
 
 If `winner` is given, finds or creates the Matchup and increments `matches`/`wins`/`losses` on both fighters and the matchup.
 
-**`PUT /state/auto`** — Same as above but reads `status` from the API response instead of a body parameter (`"1"` → p1 wins, `"2"` → p2 wins, any other value → fighters are created/found but no stats are updated). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, the request is a no-op and returns `{ changed: false }`. Otherwise, updates `LastBet` and proceeds.
+**`PUT /state/auto`** — Derives the winner from the API's `status` field (`"1"` → p1 wins, `"2"` → p2 wins). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, polls every 3 seconds until the data changes. If `status` is not `"1"` or `"2"`, polls every 3 seconds until a winner is determined (7-minute timeout per match). Only creates fighters and records stats when a winner is found. Updates `LastBet` after each match.
+
+| Field              | Type    | Description                                              |
+| ------------------ | ------- | -------------------------------------------------------- |
+| `matchesToRecord`  | integer | Optional (1–10, default `1`). Number of matches to record in a single request. |
+
+When `matchesToRecord` > 1, the endpoint loops, waiting for each successive match to complete before moving to the next. Each match has its own 7-minute timeout. The response contains results keyed as `Match1`, `Match2`, etc.:
+
+```json
+{
+  "Match1": { "p1": { ... }, "p2": { ... }, "matchup": { ... } },
+  "Match2": { "p1": { ... }, "p2": { ... }, "matchup": { ... } }
+}
+```
+
+If a match times out without a winner, the endpoint returns results for all previously completed matches.
 
 ## Query Parameters
 

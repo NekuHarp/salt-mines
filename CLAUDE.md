@@ -45,7 +45,7 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 **Salty Bet scraping (`src/api/routers/state.js`):**
 - `PUT /state` (`manualDataScrape`) — takes optional `winner: "p1"|"p2"` body; fetches the API, finds or creates both fighters, and if winner is provided, finds or creates the Matchup and increments stats on both fighters and the matchup.
-- `PUT /state/auto` (`autoDataScrape`) — same logic but derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2, other = no stats update). First compares `p1name`, `p2name`, `status` against `LastBet` id=0; if unchanged, returns `{ changed: false }` immediately. Otherwise updates `LastBet` and proceeds.
+- `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Accepts optional body `matchesToRecord` (int 1–10, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Validated by `autoScrapeValidator`.
 
 **Relationships:**
 - `Fighter` hasMany `Matchup` as both `MatchupsAsP1` (foreignKey `p1Uuid`) and `MatchupsAsP2` (foreignKey `p2Uuid`)
