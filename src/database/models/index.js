@@ -1,6 +1,7 @@
 import Fighter from "./Fighter.js";
 import LastBet from "./LastBet.js";
 import Matchup from "./Matchup.js";
+import Remaining from "./Remaining.js";
 import { Sequelize } from "sequelize";
 import configsPerEnv from "../config/config.js";
 
@@ -21,7 +22,7 @@ if (config.use_env_variable) {
     );
 }
 
-[Fighter, LastBet, Matchup].forEach((Model) => {
+[Fighter, LastBet, Matchup, Remaining].forEach((Model) => {
     const model = Model(sequelize);
     db[model.name] = model;
 });

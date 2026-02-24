@@ -15,12 +15,12 @@ export function startListener(req, res) {
         });
     }
 
-    const { matchesToRecord } = matchedData(req, {
+    const { matchesToRecord, strictMode, recordRemaining } = matchedData(req, {
         locations: ["body"],
         includeOptionals: true,
     });
 
-    listener.start({ matchesToRecord });
+    listener.start({ matchesToRecord, strictMode, recordRemaining });
 
     return res.status(200).json(listener.getStatus());
 }

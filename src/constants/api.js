@@ -8,6 +8,7 @@ export const API_ROUTES = Object.freeze({
     Fighter: "/fighters",
     Listener: "/listener",
     Matchup: "/matchups",
+    Remaining: "/remainings",
     State: "/state",
 });
 
@@ -29,6 +30,7 @@ export const PAGINATION = Object.freeze({
 export const SORTABLE_COLUMNS = Object.freeze({
     FIGHTERS: ["name", "matches", "wins", "losses", "createdAt", "updatedAt"],
     MATCHUPS: ["P1_name", "P2_name", "createdAt", "updatedAt"],
+    REMAININGS: ["value", "type", "createdAt", "updatedAt"],
 });
 
 const FILTER_OPERATORS_NAMES = Object.freeze({

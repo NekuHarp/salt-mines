@@ -1,6 +1,7 @@
+import { resolveMatchMode, shouldRecord } from "./matchMode.js";
 import db from "../database/models/index.js";
 
-const { Fighter, LastBet, Matchup } = db;
+const { Fighter, LastBet, Matchup, Remaining } = db;
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -43,6 +44,17 @@ async function tick() {
             data.status === "1" ? "p1" : data.status === "2" ? "p2" : null;
         if (!winner) return;
 
+        const mode = await resolveMatchMode(data.remaining);
+
+        if (params?.recordRemaining && data.remaining) {
+            await Remaining.findOrCreate({
+                where: { value: data.remaining },
+                defaults: { mode },
+            });
+        }
+
+        if (!shouldRecord(mode, params?.strictMode)) return;
+
         const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });
         const [p2] = await Fighter.findOrCreate({ where: { name: data.p2name } });
 
@@ -75,6 +87,8 @@ async function tick() {
 export function start(options = {}) {
     params = {
         matchesToRecord: options.matchesToRecord ?? null,
+        strictMode: options.strictMode ?? false,
+        recordRemaining: options.recordRemaining ?? false,
     };
     matchesRecorded = 0;
     active = true;

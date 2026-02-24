@@ -1,8 +1,9 @@
 import db from "../../database/models/index.js";
+import { getMatchMode } from "../../shared/matchMode.js";
 import { getWinRate } from "../../shared/index.js";
 import { matchedData } from "express-validator";
 
-const { Fighter, LastBet, Matchup } = db;
+const { Fighter, LastBet, Matchup, Remaining } = db;
 
 export async function currentMatchupPrediction(req, res) {
     const response = await fetch(process.env.SALTY_BET_API_URL);
@@ -45,7 +46,7 @@ function sleep(ms) {
 }
 
 export async function autoDataScrape(req, res) {
-    const { matchesToRecord, predictions } = matchedData(req, {
+    const { matchesToRecord, predictions, recordRemaining } = matchedData(req, {
         locations: ["body"],
         includeOptionals: true,
     });
@@ -116,6 +117,14 @@ export async function autoDataScrape(req, res) {
             data.status === "1" ? "p1" : data.status === "2" ? "p2" : null;
         if (!winner) {
             return res.status(200).json(results);
+        }
+
+        if (recordRemaining && data.remaining) {
+            const mode = getMatchMode(data.remaining);
+            await Remaining.findOrCreate({
+                where: { value: data.remaining },
+                defaults: { mode },
+            });
         }
 
         const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });

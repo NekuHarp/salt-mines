@@ -71,8 +71,9 @@ PUT /state/auto  Automatic scrape
 
 | Field              | Type    | Description                                              |
 | ------------------ | ------- | -------------------------------------------------------- |
-| `matchesToRecord`  | integer | Optional (1–10, default `1`). Number of matches to record in a single request. |
+| `matchesToRecord`  | integer | Optional (1–25, default `1`). Number of matches to record in a single request. |
 | `predictions`      | boolean | Optional. If `true`, includes `p1WinChance` in each match result (calculated before stats are updated). |
+| `recordRemaining`  | boolean | Optional. If `true`, stores unique `remaining` strings and their detected match mode in the `Remaining` table. |
 
 When `matchesToRecord` > 1, the endpoint loops, waiting for each successive match to complete before moving to the next. Each match has its own 7-minute timeout. The response contains results keyed as `Match1`, `Match2`, etc.:
 
@@ -99,7 +100,9 @@ PUT /listener/stop   Stop listener
 
 | Field              | Type    | Description                                              |
 | ------------------ | ------- | -------------------------------------------------------- |
-| `matchesToRecord`  | integer | Optional (1–10). If provided, the listener auto-stops after recording that many matches. If omitted, runs until manually stopped. |
+| `matchesToRecord`  | integer | Optional (1–25). If provided, the listener auto-stops after recording that many matches. If omitted, runs until manually stopped. |
+| `strictMode`       | boolean | Optional (default `false`). Skips exhibition matches always; when `true`, also skips tournament matches — only matchmaking is recorded. |
+| `recordRemaining`  | boolean | Optional (default `false`). Stores unique `remaining` strings and their detected match mode in the `Remaining` table. |
 
 **`PUT /listener/stop`** — Stops the background listener. Returns `409` if not running.
 
@@ -154,3 +157,13 @@ Singleton table (always id=0). Stores the last values seen by `PUT /state/auto` 
 | --------- | ---- | -------------------------------------------- |
 | `id`      | `0`  | Always 0; pre-seeded by migration            |
 | `content` | JSON | `{ p1name, p2name, status }` or `null`       |
+
+### Remaining
+
+Stores unique `remaining` strings from the Salty Bet API along with their detected match mode. Populated when `recordRemaining: true` is passed to `PUT /state/auto` or `PUT /listener/start`. Once populated, entries in this table take priority over the heuristic-based detection — allowing manual correction of misdetected modes.
+
+| Field   | Type   | Notes                                              |
+| ------- | ------ | -------------------------------------------------- |
+| `uuid`  | UUID v4 | Auto-generated PK                                 |
+| `value` | string | Unique `remaining` string from the API             |
+| `mode`  | enum   | `exhibition`, `tournament`, or `matchmaking`       |
