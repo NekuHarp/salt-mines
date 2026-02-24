@@ -6,6 +6,7 @@ module.exports = {
         {
             name: "salt-mines",
             script: "index.js",
+            cwd: "/home/opc/salt-mines",
             watch: false,
             autorestart: true,
             max_memory_restart: "200M",
