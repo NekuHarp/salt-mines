@@ -17,7 +17,7 @@ const matchModes = Object.values(MATCH_MODES);
 export const remainingListValidator = [
     query("mode").optional().isIn(matchModes),
     ...paginationValidatorBuilder(PAGINATION.GENERIC.LIMIT),
-    sortValidatorBuilder(SORTABLE_COLUMNS.remainingS),
+    sortValidatorBuilder(SORTABLE_COLUMNS.REMAININGS),
     ...timestampValidator,
     validationErrorHandler,
 ];

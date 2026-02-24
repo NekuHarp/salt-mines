@@ -13,20 +13,20 @@
 1. Sign up at https://tidbcloud.com
 2. Create a **Serverless** cluster (free tier)
 3. From the cluster's **Connect** page, note down:
-   - `HOST`
-   - `PORT` (usually `4000`)
-   - `USER`
-   - `PASSWORD`
-   - `DATABASE` (default is `test`, create a new one if you prefer)
+    - `HOST`
+    - `PORT` (usually `4000`)
+    - `USER`
+    - `PASSWORD`
+    - `DATABASE` (default is `test`, create a new one if you prefer)
 
 ---
 
 ## 2. Create an Oracle Cloud VM
 
 1. Sign in to Oracle Cloud → **Compute → Instances → Create Instance**
-2. **Shape:** Click *Change shape* → **Specialty and previous generation** → `VM.Standard.E2.1.Micro`
-   - RAM is fixed at 1 GB — swap will compensate for this (see step 5)
-   - Note: A1.Flex ARM instances have more RAM and are also always-free, but are frequently out of capacity
+2. **Shape:** Click _Change shape_ → **Specialty and previous generation** → `VM.Standard.E2.1.Micro`
+    - RAM is fixed at 1 GB — swap will compensate for this (see step 5)
+    - Note: A1.Flex ARM instances have more RAM and are also always-free, but are frequently out of capacity
 3. **Image:** Oracle Linux 9 (default — do not change)
 4. **SSH keys:** Upload your public key — you'll need the corresponding private key to connect
 5. Leave everything else as default and click **Create**
@@ -37,7 +37,7 @@
 
 1. Go to your instance → **Attached VNICs** → click the VNIC name
 2. Under **IPv4 Addresses** → click ⋮ next to the private IP → **Edit**
-3. Set *Public IP address* to **Ephemeral public IP** and click **Update**
+3. Set _Public IP address_ to **Ephemeral public IP** and click **Update**
 
 ---
 
@@ -49,9 +49,9 @@ Oracle Cloud blocks traffic at two levels. **Both** must be configured.
 
 1. Go to your instance → **Subnet** → **Default Security List**
 2. Add an **Ingress Rule**:
-   - Source CIDR: `0.0.0.0/0`
-   - Protocol: TCP
-   - Destination port: `3000`
+    - Source CIDR: `0.0.0.0/0`
+    - Protocol: TCP
+    - Destination port: `3000`
 
 ### Layer 2: Instance OS firewall (firewalld)
 
@@ -283,10 +283,10 @@ pm2 restart salt-mines
 
 ## Useful pm2 commands
 
-| Command | Description |
-|---|---|
-| `pm2 status` | Show running apps |
-| `pm2 logs salt-mines` | Tail logs |
-| `pm2 restart salt-mines` | Restart the app |
-| `pm2 stop salt-mines` | Stop the app |
-| `pm2 monit` | Live CPU/memory dashboard |
+| Command                  | Description               |
+| ------------------------ | ------------------------- |
+| `pm2 status`             | Show running apps         |
+| `pm2 logs salt-mines`    | Tail logs                 |
+| `pm2 restart salt-mines` | Restart the app           |
+| `pm2 stop salt-mines`    | Stop the app              |
+| `pm2 monit`              | Live CPU/memory dashboard |
