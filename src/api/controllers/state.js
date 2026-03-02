@@ -1,5 +1,6 @@
+import { getWinRate, getWinRateFromData } from "../../shared/index.js";
+import { MATCH_MODES } from "../../constants/index.js";
 import db from "../../database/models/index.js";
-import { getWinRate } from "../../shared/index.js";
 import { matchedData } from "express-validator";
 import { resolveMatchMode } from "../../shared/matchMode.js";
 
@@ -30,6 +31,67 @@ export async function currentMatchupPrediction(req, res) {
     const p1WinChance = await getWinRate(p1.uuid, p2.uuid);
 
     return res.status(200).json({ p1, p2, p1WinChance });
+}
+
+export async function currentMatchData(req, res) {
+    const data = await fetchSaltyBetData();
+    if (!data) {
+        return res.fail({
+            httpCode: 502,
+            message: "Salty Bet API request failed.",
+            errorCode: 40,
+        });
+    }
+
+    if (!data.p1name || !data.p2name) {
+        return res.fail({
+            httpCode: 502,
+            message: "Salty Bet API response is missing fighter names.",
+            errorCode: 41,
+        });
+    }
+
+    const mode = await resolveMatchMode(data.remaining);
+    if (mode === MATCH_MODES.EXHIBITION) {
+        return res.fail({
+            httpCode: 422,
+            message: "Exhibition matches are not implemented yet.",
+            errorCode: 42,
+        });
+    }
+
+    const p1Record = await Fighter.findOne({ where: { name: data.p1name } });
+    const p2Record = await Fighter.findOne({ where: { name: data.p2name } });
+
+    const p1 = p1Record
+        ? { name: p1Record.name, matches: p1Record.matches, wins: p1Record.wins, losses: p1Record.losses }
+        : { name: data.p1name, matches: 0, wins: 0, losses: 0 };
+    const p2 = p2Record
+        ? { name: p2Record.name, matches: p2Record.matches, wins: p2Record.wins, losses: p2Record.losses }
+        : { name: data.p2name, matches: 0, wins: 0, losses: 0 };
+
+    let matchup;
+    if (p1Record && p2Record) {
+        const matchupRecord = await Matchup.findOne({
+            where: { p1Uuid: p1Record.uuid, p2Uuid: p2Record.uuid },
+        });
+        matchup = matchupRecord
+            ? { matches: matchupRecord.matches, p1Wins: matchupRecord.p1Wins, p2Wins: matchupRecord.p2Wins }
+            : { matches: 0, p1Wins: 0, p2Wins: 0 };
+    } else {
+        matchup = { matches: 0, p1Wins: 0, p2Wins: 0 };
+    }
+
+    const p1WinChance = getWinRateFromData(p1, p2, matchup);
+    const p2WinChance = Math.round((100 - p1WinChance) * 100) / 100;
+
+    const winner = data.status === "1"
+        ? data.p1name
+        : data.status === "2"
+            ? data.p2name
+            : "The match is still ongoing!";
+
+    return res.status(200).json({ p1, p2, matchup, p1WinChance, p2WinChance, winner, mode });
 }
 
 const POLL_INTERVAL_MS = 3000;

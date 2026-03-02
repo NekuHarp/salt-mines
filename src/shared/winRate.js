@@ -2,23 +2,13 @@ import db from "../database/models/index.js";
 
 const { Fighter, Matchup } = db;
 
-export async function getWinRate(p1Uuid, p2Uuid) {
-    const [p1, p2, matchupAsP1, matchupAsP2] = await Promise.all([
-        Fighter.findByPk(p1Uuid),
-        Fighter.findByPk(p2Uuid),
-        Matchup.findOne({ where: { p1Uuid, p2Uuid } }),
-        Matchup.findOne({ where: { p1Uuid: p2Uuid, p2Uuid: p1Uuid } }),
-    ]);
+const MATCHUP_EXTRA_WEIGHT = 9;
 
-    if (!p1 || !p2) return null;
-
-    // Matchup win rate: combine both directions
+function computeWinRate(p1, p2, matchupAsP1, matchupAsP2) {
     const p1MatchupWins =
         (matchupAsP1?.p1Wins ?? 0) + (matchupAsP2?.p2Wins ?? 0);
     const totalMatchupMatches =
         (matchupAsP1?.matches ?? 0) + (matchupAsP2?.matches ?? 0);
-
-    const MATCHUP_EXTRA_WEIGHT = 9;
 
     let p1MatchupWinRate;
     if (totalMatchupMatches > 0) {
@@ -38,4 +28,21 @@ export async function getWinRate(p1Uuid, p2Uuid) {
     }
 
     return Math.round(p1MatchupWinRate * 100) / 100;
+}
+
+export async function getWinRate(p1Uuid, p2Uuid) {
+    const [p1, p2, matchupAsP1, matchupAsP2] = await Promise.all([
+        Fighter.findByPk(p1Uuid),
+        Fighter.findByPk(p2Uuid),
+        Matchup.findOne({ where: { p1Uuid, p2Uuid } }),
+        Matchup.findOne({ where: { p1Uuid: p2Uuid, p2Uuid: p1Uuid } }),
+    ]);
+
+    if (!p1 || !p2) return null;
+
+    return computeWinRate(p1, p2, matchupAsP1, matchupAsP2);
+}
+
+export function getWinRateFromData(p1, p2, matchup) {
+    return computeWinRate(p1, p2, matchup, null);
 }

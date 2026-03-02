@@ -47,11 +47,12 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 **Salty Bet scraping & predictions (`src/api/routers/state.js`):**
 
 - `GET /state` (`currentMatchupPrediction`) — fetches the API, finds or creates both fighters, and returns `{ p1, p2, p1WinChance }` using `getWinRate` (`src/shared/winRate.js`).
-- `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Accepts optional body `matchesToRecord` (int 1–25, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Validated by `autoScrapeValidator`.
+- `GET /state/current` (`currentMatchData`) — read-only snapshot of the current match. Looks up existing fighters/matchup without creating them; mocks missing entries with zeroed stats. Returns `{ p1, p2, matchup, p1WinChance, p2WinChance, winner, mode }` with UUIDs stripped. Returns 422 for exhibition matches. Uses `getWinRateFromData` so win rates work even with mocked data.
+- `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Uses `resolveMatchMode` with the `remaining` string captured *before* polling for the winner (since the API's `remaining` may already reflect the next match by the time the winner status appears). Accepts optional body `matchesToRecord` (int 1–25, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Validated by `autoScrapeValidator`.
 
 **Background listener (`src/shared/listener.js`, `src/api/routers/listener.js`):**
 
-- In-process `setInterval`-based service that polls `SALTY_BET_API_URL` every 3s and records match results automatically (fire-and-forget). Managed via `start(params)`, `stop()`, `getStatus()` exports.
+- In-process `setInterval`-based service that polls `SALTY_BET_API_URL` every 3s and records match results automatically (fire-and-forget). Uses the `remaining` stored in `LastBet` from the previous poll for mode detection, since the API's `remaining` field may already reflect the next match when the winner status appears. Managed via `start(params)`, `stop()`, `getStatus()` exports.
 - `GET /listener` — returns `{ active, params }`.
 - `PUT /listener/start` — starts the listener; returns `409` if already running. Optional body `matchesToRecord` (int 1–25) auto-stops after that many matches. Optional body `strictMode` (boolean, default `false`) skips exhibition matches always and tournament matches when `true`, only recording matchmaking matches. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table.
 - `PUT /listener/stop` — stops the listener; returns `409` if not running.
@@ -66,13 +67,14 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 **Win rate calculation (`src/shared/winRate.js`):**
 
-- `getWinRate(p1Uuid, p2Uuid)` — returns P1's predicted win chance (0–100, max 2 decimals). If head-to-head data exists, blends general and matchup stats with matchup data weighted 10× (1× from general + 9× extra). If no head-to-head data, mocks the rate as `50 + (p1GeneralWinRate - p2GeneralWinRate)`, clamped to [0, 100]. Fighters with no matches default to 0% general win rate.
+- `getWinRate(p1Uuid, p2Uuid)` — async; looks up fighters and matchups by UUID, then delegates to `computeWinRate`. Returns P1's predicted win chance (0–100, max 2 decimals). If head-to-head data exists, blends general and matchup stats with matchup data weighted 10× (1× from general + 9× extra). If no head-to-head data, mocks the rate as `50 + (p1GeneralWinRate - p2GeneralWinRate)`, clamped to [0, 100]. Fighters with no matches default to 0% general win rate.
+- `getWinRateFromData(p1, p2, matchup)` — sync; takes fighter and matchup objects directly (real or mocked) and delegates to `computeWinRate`. Used by `currentMatchData` to compute win rates without requiring DB records.
 
 **Relationships:**
 
 - `Fighter` hasMany `Matchup` as both `MatchupsAsP1` (foreignKey `p1Uuid`) and `MatchupsAsP2` (foreignKey `p2Uuid`)
 - `Matchup` belongsTo `Fighter` as `P1` and `P2`; deleting a Fighter cascades
-- `LastBet` is a singleton (always id=0, pre-seeded by migration); no associations
+- `LastBet` is a singleton (always id=0, pre-seeded by migration); `content` JSON stores `{ p1name, p2name, status, remaining }`; no associations
 - `Remaining` stores unique `remaining` strings from the Salty Bet API with their detected match mode (`exhibition`, `tournament`, `matchmaking`); no associations
 
 ## Code Conventions
