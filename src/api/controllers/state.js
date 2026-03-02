@@ -1,7 +1,7 @@
 import db from "../../database/models/index.js";
-import { getMatchMode } from "../../shared/matchMode.js";
 import { getWinRate } from "../../shared/index.js";
 import { matchedData } from "express-validator";
+import { resolveMatchMode } from "../../shared/matchMode.js";
 
 const { Fighter, LastBet, Matchup, Remaining } = db;
 
@@ -74,31 +74,61 @@ export async function autoDataScrape(req, res) {
             });
         }
 
-        const { p1name: lastP1, p2name: lastP2, status: lastStatus } = lastBet.content ?? {};
-        if (data.p1name === lastP1 && data.p2name === lastP2 && data.status === lastStatus) {
+        const {
+            p1name: lastP1,
+            p2name: lastP2,
+            status: lastStatus,
+        } = lastBet.content ?? {};
+        if (
+            data.p1name === lastP1 &&
+            data.p2name === lastP2 &&
+            data.status === lastStatus
+        ) {
             // Poll until data changes (new match or status update)
             while (Date.now() < deadline) {
                 await sleep(POLL_INTERVAL_MS);
                 const polled = await fetchSaltyBetData();
                 if (!polled) continue;
-                const { p1name: lp1, p2name: lp2, status: ls } = lastBet.content ?? {};
-                if (polled.p1name !== lp1 || polled.p2name !== lp2 || polled.status !== ls) {
+                const {
+                    p1name: lp1,
+                    p2name: lp2,
+                    status: ls,
+                } = lastBet.content ?? {};
+                if (
+                    polled.p1name !== lp1 ||
+                    polled.p2name !== lp2 ||
+                    polled.status !== ls
+                ) {
                     data = polled;
                     break;
                 }
             }
 
-            if (data.p1name === lastP1 && data.p2name === lastP2 && data.status === lastStatus) {
-                return res.status(200).json(i === 1 ? { changed: false } : results);
+            if (
+                data.p1name === lastP1 &&
+                data.p2name === lastP2 &&
+                data.status === lastStatus
+            ) {
+                return res
+                    .status(200)
+                    .json(i === 1 ? { changed: false } : results);
             }
         }
+
+        // Capture remaining before polling for the winner, because
+        // the API's remaining field may already reflect the next match
+        // by the time the winner status appears
+        const preWinnerRemaining = data.remaining;
 
         // Poll until winner is determined
         if (data.status !== "1" && data.status !== "2") {
             while (Date.now() < deadline) {
                 await sleep(POLL_INTERVAL_MS);
                 const polled = await fetchSaltyBetData();
-                if (polled && (polled.status === "1" || polled.status === "2")) {
+                if (
+                    polled &&
+                    (polled.status === "1" || polled.status === "2")
+                ) {
                     data = polled;
                     break;
                 }
@@ -110,6 +140,7 @@ export async function autoDataScrape(req, res) {
                 p1name: data.p1name,
                 p2name: data.p2name,
                 status: data.status,
+                remaining: data.remaining,
             },
         });
 
@@ -119,16 +150,21 @@ export async function autoDataScrape(req, res) {
             return res.status(200).json(results);
         }
 
-        if (recordRemaining && data.remaining) {
-            const mode = getMatchMode(data.remaining);
+        const mode = await resolveMatchMode(preWinnerRemaining);
+
+        if (recordRemaining && preWinnerRemaining) {
             await Remaining.findOrCreate({
-                where: { value: data.remaining },
+                where: { value: preWinnerRemaining },
                 defaults: { mode },
             });
         }
 
-        const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });
-        const [p2] = await Fighter.findOrCreate({ where: { name: data.p2name } });
+        const [p1] = await Fighter.findOrCreate({
+            where: { name: data.p1name },
+        });
+        const [p2] = await Fighter.findOrCreate({
+            where: { name: data.p2name },
+        });
 
         let p1WinChance;
         if (predictions) {

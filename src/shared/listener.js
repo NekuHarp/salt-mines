@@ -26,34 +26,50 @@ async function tick() {
         if (!data || !data.p1name || !data.p2name) return;
 
         const lastBet = await LastBet.findByPk(0);
-        const { p1name: lastP1, p2name: lastP2, status: lastStatus } = lastBet.content ?? {};
+        const { p1name: lastP1, p2name: lastP2, status: lastStatus, remaining: lastRemaining } = lastBet.content ?? {};
 
         if (data.p1name === lastP1 && data.p2name === lastP2 && data.status === lastStatus) {
             return;
         }
 
-        await lastBet.update({
-            content: {
-                p1name: data.p1name,
-                p2name: data.p2name,
-                status: data.status,
-            },
-        });
-
         const winner =
             data.status === "1" ? "p1" : data.status === "2" ? "p2" : null;
-        if (!winner) return;
 
-        const mode = await resolveMatchMode(data.remaining);
+        if (winner) {
+            // Use the remaining from the previous poll (before winner was determined)
+            // because the API's remaining field may already reflect the next match
+            const remaining = lastRemaining ?? data.remaining;
+            const mode = await resolveMatchMode(remaining);
 
-        if (params?.recordRemaining && data.remaining) {
-            await Remaining.findOrCreate({
-                where: { value: data.remaining },
-                defaults: { mode },
+            if (params?.recordRemaining && remaining) {
+                await Remaining.findOrCreate({
+                    where: { value: remaining },
+                    defaults: { mode },
+                });
+            }
+
+            await lastBet.update({
+                content: {
+                    p1name: data.p1name,
+                    p2name: data.p2name,
+                    status: data.status,
+                    remaining: data.remaining,
+                },
             });
-        }
 
-        if (!shouldRecord(mode, params?.strictMode)) return;
+            if (!shouldRecord(mode, params?.strictMode)) return;
+        } else {
+            await lastBet.update({
+                content: {
+                    p1name: data.p1name,
+                    p2name: data.p2name,
+                    status: data.status,
+                    remaining: data.remaining,
+                },
+            });
+
+            return;
+        }
 
         const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });
         const [p2] = await Fighter.findOrCreate({ where: { name: data.p2name } });
