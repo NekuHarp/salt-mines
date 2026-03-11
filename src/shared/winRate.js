@@ -2,32 +2,32 @@ import db from "../database/models/index.js";
 
 const { Fighter, Matchup } = db;
 
-const MATCHUP_EXTRA_WEIGHT = 9;
+// How many "virtual" head-to-head games the general-rate prior is worth.
+// Low (3–5) = matchup data overrides quickly; high (20+) = needs many games.
+const PRIOR_STRENGTH = 5;
 
 function computeWinRate(p1, p2, matchupAsP1, matchupAsP2) {
-    const p1MatchupWins =
+    // Laplace-smoothed general win rates to avoid 0/1 extremes
+    const p1Rate = (p1.wins + 1) / (p1.matches + 2);
+    const p2Rate = (p2.wins + 1) / (p2.matches + 2);
+
+    // Bradley-Terry prior from general win rates
+    const s1 = p1Rate / (1 - p1Rate);
+    const s2 = p2Rate / (1 - p2Rate);
+    const prior = s1 / (s1 + s2);
+
+    // Head-to-head data
+    const matchupWins =
         (matchupAsP1?.p1Wins ?? 0) + (matchupAsP2?.p2Wins ?? 0);
-    const totalMatchupMatches =
+    const matchupTotal =
         (matchupAsP1?.matches ?? 0) + (matchupAsP2?.matches ?? 0);
 
-    let p1MatchupWinRate;
-    if (totalMatchupMatches > 0) {
-        const weightedWins = p1.wins + p1MatchupWins * MATCHUP_EXTRA_WEIGHT;
-        const weightedMatches =
-            p1.matches + totalMatchupMatches * MATCHUP_EXTRA_WEIGHT;
-        p1MatchupWinRate = (weightedWins / weightedMatches) * 100;
-    } else {
-        const p1GeneralWinRate =
-            p1.matches > 0 ? (p1.wins / p1.matches) * 100 : 0;
-        const p2GeneralWinRate =
-            p2.matches > 0 ? (p2.wins / p2.matches) * 100 : 0;
-        p1MatchupWinRate = Math.min(
-            100,
-            Math.max(0, 50 + (p1GeneralWinRate - p2GeneralWinRate))
-        );
-    }
+    // Bayesian update (Beta distribution posterior mean)
+    const alpha = prior * PRIOR_STRENGTH + matchupWins;
+    const beta = (1 - prior) * PRIOR_STRENGTH + (matchupTotal - matchupWins);
+    const result = alpha / (alpha + beta);
 
-    return Math.round(p1MatchupWinRate * 100) / 100;
+    return Math.round(result * 10000) / 100;
 }
 
 export async function getWinRate(p1Uuid, p2Uuid) {

@@ -67,6 +67,8 @@ PUT /state/auto  Automatic scrape
 
 **`GET /state`** (`currentMatchupPrediction`) — Fetches `SALTY_BET_API_URL`, finds or creates both fighters from `p1name`/`p2name`, and returns a win-chance prediction for P1 using `getWinRate` (`src/shared/winRate.js`). Response: `{ p1, p2, p1WinChance }`.
 
+Win rates are computed using a Bradley-Terry model (prior from general win rates) with Bayesian Beta updating (head-to-head data overrides the prior as sample size grows). See `src/shared/winRate.js` for details.
+
 **`PUT /state/auto`** — Derives the winner from the API's `status` field (`"1"` → p1 wins, `"2"` → p2 wins). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, polls every 3 seconds until the data changes. If `status` is not `"1"` or `"2"`, polls every 3 seconds until a winner is determined (7-minute timeout per match). Only creates fighters and records stats when a winner is found. Updates `LastBet` after each match.
 
 | Field              | Type    | Description                                              |

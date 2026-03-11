@@ -67,7 +67,9 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 **Win rate calculation (`src/shared/winRate.js`):**
 
-- `getWinRate(p1Uuid, p2Uuid)` — async; looks up fighters and matchups by UUID, then delegates to `computeWinRate`. Returns P1's predicted win chance (0–100, max 2 decimals). If head-to-head data exists, blends general and matchup stats with matchup data weighted 10× (1× from general + 9× extra). If no head-to-head data, mocks the rate as `50 + (p1GeneralWinRate - p2GeneralWinRate)`, clamped to [0, 100]. Fighters with no matches default to 0% general win rate.
+- Uses a **Bradley-Terry model** to derive a prior win probability from both fighters' general win rates. General win rates are Laplace-smoothed (`(wins + 1) / (matches + 2)`) to avoid 0/1 extremes; fighters with no matches default to 50%. Each fighter's smoothed rate is converted to a strength parameter (odds ratio), and the prior is `s1 / (s1 + s2)`.
+- Head-to-head data is incorporated via **Bayesian Beta updating**. The prior is encoded as a Beta distribution with `PRIOR_STRENGTH` (currently 5) virtual games. Observed matchup wins/losses are added to the Beta parameters, and the posterior mean is the final prediction. This means head-to-head data naturally overrides general rates as sample size grows — with 0 matchup games the result is pure Bradley-Terry, with many matchup games it converges to the observed matchup win rate.
+- `getWinRate(p1Uuid, p2Uuid)` — async; looks up fighters and matchups by UUID, then delegates to `computeWinRate`. Returns P1's predicted win chance (0–100, max 2 decimals).
 - `getWinRateFromData(p1, p2, matchup)` — sync; takes fighter and matchup objects directly (real or mocked) and delegates to `computeWinRate`. Used by `currentMatchData` to compute win rates without requiring DB records.
 
 **Relationships:**
