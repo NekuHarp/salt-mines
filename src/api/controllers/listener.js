@@ -15,12 +15,18 @@ export function startListener(req, res) {
         });
     }
 
-    const { matchesToRecord, strictMode, recordRemaining } = matchedData(req, {
-        locations: ["body"],
-        includeOptionals: true,
-    });
+    const { matchesToRecord, strictMode, recordRemaining, bettingMode } =
+        matchedData(req, {
+            locations: ["body"],
+            includeOptionals: true,
+        });
 
-    listener.start({ matchesToRecord, strictMode, recordRemaining });
+    listener.start({
+        matchesToRecord,
+        strictMode,
+        recordRemaining,
+        bettingMode,
+    });
 
     return res.status(200).json(listener.getStatus());
 }

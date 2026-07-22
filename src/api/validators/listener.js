@@ -5,5 +5,6 @@ export const startListenerValidator = [
     body("matchesToRecord").optional().isInt({ min: 1, max: 25 }),
     body("strictMode").optional().isBoolean(),
     body("recordRemaining").optional().isBoolean(),
+    body("bettingMode").optional().isBoolean(),
     validationErrorHandler,
 ];

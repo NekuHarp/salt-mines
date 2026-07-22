@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run start` — Start server with node
 - `npm run lint` — Run ESLint
 
-Copy `.env.example` to `.env` and fill in `DATABASE_*` credentials and `SALTY_BET_API_URL` before running.
+Copy `.env.example` to `.env` and fill in `DATABASE_*` credentials, the `SALT_MINES_USER_NAME`/`SALT_MINES_USER_PASSWORD` API Basic Auth credentials, and the `SALTY_BET_USER_EMAIL`/`SALTY_BET_USER_PWORD` Salty Bet account credentials before running. The Salty Bet website URL is a constant (`SALTY_BET_BASE_URL` in `src/constants/app.js`), not an env var.
 
 Migrations are managed via Sequelize CLI (configured in `.sequelizerc`). The first migration reads raw SQL from `src/database/migrations/tables-structures.sql`; subsequent ones are standard Sequelize CJS migration files.
 
@@ -26,11 +26,14 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 2. `/health_check` handled before JSON body parsing
 3. `express.json()` parses body
 4. Routes under `MAIN_API_ROOT` (currently `""`) → `apiRouter`
-5. `errorHandler` (4-arg) catches anything thrown by controllers
+5. `apiRouter` applies `basicAuth` to every mount except `stateRouter`; the state router applies it per-route (`GET /state/balance`, `PUT /state/auto`), leaving `GET /state` and `GET /state/current` public
+6. `errorHandler` (4-arg) catches anything thrown by controllers
 
 **Key patterns:**
 
 - **`res.fail(errorObject)`** — added by the `fail` middleware (`src/shared/fail.js`); used everywhere for error responses. Error objects (`INTERNAL_SERVER_ERROR`, `NOT_FOUND`, `INVALID_VALUE`) are defined in `src/shared/errors.js` with shape `{ httpCode, message, errorCode }`.
+
+- **`basicAuth` (`src/shared/basicAuth.js`)** — HTTP Basic Auth middleware validating the `Authorization` header against `SALT_MINES_USER_NAME`/`SALT_MINES_USER_PASSWORD` (constant-time compare via SHA-256 + `timingSafeEqual`). Returns `401` with `WWW-Authenticate: Basic realm="salt-mines"` on failure (errorCode 70). Applied to all routes except `GET /state` and `GET /state/current`.
 
 - **Router `.param("uuid", ...)`** — each router validates the `:uuid` param with express-validator, runs `validationErrorHandler`, then `findFighterByUuid`/`findMatchupByUuid`, which loads the model instance into `req.model[ModelName]`. Controllers read from `req.model` rather than querying again.
 
@@ -48,14 +51,30 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 - `GET /state` (`currentMatchupPrediction`) — fetches the API, finds or creates both fighters, and returns `{ p1, p2, p1WinChance }` using `getWinRate` (`src/shared/winRate.js`).
 - `GET /state/current` (`currentMatchData`) — read-only snapshot of the current match. Looks up existing fighters/matchup without creating them; mocks missing entries with zeroed stats. Returns `{ p1, p2, matchup, p1WinChance, p2WinChance, winner, mode }` with UUIDs stripped. Returns 422 for exhibition matches. Uses `getWinRateFromData` so win rates work even with mocked data.
+- `GET /state/balance` (`currentBalance`) — **protected by `basicAuth`.** Fetches the Salty Bet home page (via the authenticated session in `saltyBet.js`, auto-signing-in if there's no cookie) and parses `<span id="balance">` out of the HTML. Returns `{ balance }` as a number (thousands separators stripped, parsed via `Number` to avoid a 32-bit cap). Fails with 500 errorCode 62 if credentials are unset, 502 errorCode 64 if the balance can't be read.
 - `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Uses `resolveMatchMode` with the `remaining` string captured *before* polling for the winner (since the API's `remaining` may already reflect the next match by the time the winner status appears). Accepts optional body `matchesToRecord` (int 1–25, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Validated by `autoScrapeValidator`.
+
+**Betting (`src/api/routers/bet.js`, `src/api/controllers/bet.js`, `src/shared/saltyBet.js`):**
+
+- Placing a bet requires an authenticated Salty Bet session (cookie), which is separate from the API's own Basic Auth. `src/shared/saltyBet.js` manages that session in memory:
+  - `authenticate()` — POSTs `SALTY_BET_USER_EMAIL`/`SALTY_BET_USER_PWORD` (+ `authenticate=signin`) as `application/x-www-form-urlencoded` to `/authenticate?signin=1` with `redirect: "manual"`, and stores the `Set-Cookie` values as the session cookie. Returns `true` if a cookie was obtained. Throws if credentials are unset.
+  - `placeBet({ selectedplayer, wager })` — authenticates if there is no session, POSTs the bet to `/ajax_place_bet.php`, and re-authenticates once + retries if the bet does not succeed (session likely expired). The endpoint returns `1` on success / `0` on failure; `success` is `body === "1"`.
+  - `getBalance()` — GETs the home page with the session cookie, re-authenticating once if the balance can't be read, and returns the `<span id="balance">` value as a number (used by `GET /state/balance`).
+- `PUT /bet/login` (`login`) — forces authentication; returns `{ authenticated: true }` or fails (500 errorCode 62 if credentials unset, 502 errorCode 63 if auth failed).
+- `PUT /bet` (`bet`) — body `selectedplayer` (`"player1"`/`"player2"`, from `SELECTED_PLAYERS`) and `wager` (int ≥ 1), validated by `placeBetValidator`. First fetches the state and requires `status === "open"` (betting only opens for a short window before each match), else 422 errorCode 60. On a rejected bet returns 502 errorCode 61. On success returns `{ placed: true, selectedplayer, wager }`.
 
 **Background listener (`src/shared/listener.js`, `src/api/routers/listener.js`):**
 
-- In-process `setInterval`-based service that polls `SALTY_BET_API_URL` every 3s and records match results automatically (fire-and-forget). Uses the `remaining` stored in `LastBet` from the previous poll for mode detection, since the API's `remaining` field may already reflect the next match when the winner status appears. Managed via `start(params)`, `stop()`, `getStatus()` exports.
+- In-process `setInterval`-based service that polls the Salty Bet state URL (`SALTY_BET_BASE_URL` + `SALTY_BET_STATE_PATH`) every 3s and records match results automatically (fire-and-forget). Uses the `remaining` stored in `LastBet` from the previous poll for mode detection, since the API's `remaining` field may already reflect the next match when the winner status appears. Managed via `start(params)`, `stop()`, `getStatus()` exports.
 - `GET /listener` — returns `{ active, params }`.
-- `PUT /listener/start` — starts the listener; returns `409` if already running. Optional body `matchesToRecord` (int 1–25) auto-stops after that many matches. Optional body `strictMode` (boolean, default `false`) skips exhibition matches always and tournament matches when `true`, only recording matchmaking matches. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table.
+- `PUT /listener/start` — starts the listener; returns `409` if already running. Optional body `matchesToRecord` (int 1–25) auto-stops after that many matches. Optional body `strictMode` (boolean, default `false`) skips exhibition matches always and tournament matches when `true`, only recording matchmaking matches. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Optional body `bettingMode` (boolean, default `false`) automatically places a bet each time a match's betting window opens (see below).
 - `PUT /listener/stop` — stops the listener; returns `409` if not running.
+
+**Auto-betting (`bettingMode`, in `src/shared/listener.js`):** when enabled, the tick that first sees `status === "open"` for a match places one bet (the top-of-tick dedup against `LastBet` guarantees a single bet per window). It computes the current P1 win chance via `computeP1WinChance` (stored fighter/matchup stats, zeroed when absent, same as `currentMatchData`), bets on the favourite (a 50-50 split goes to `player1`), and sizes the wager against the live `getBalance()`, rounded up (`Math.ceil`):
+  - **Exhibition** — never bets.
+  - **Tournament** — all-in (100% of balance) on the favourite.
+  - **Matchmaking** — tiered by the favourite's win chance `c` (exact boundaries fall to the lower tier): `c<=60` → 5%, `60<c<=70` → 10%, `70<c<=85` → 20%, `85<c<=95` → 30%, `c>95` → 50%.
+  - Skips silently if the balance can't be read, is ≤ 0, or the computed wager is < 1. Betting failures are caught so they never stop the listener.
 - Concurrency guard (`processing` flag) prevents overlapping ticks. Errors are silently skipped.
 
 **Match mode detection (`src/shared/matchMode.js`):**

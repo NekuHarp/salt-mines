@@ -5,6 +5,7 @@ export const DELETION_SUCCESSFUL_MSG = "Deleted successfully.";
 export const MAIN_API_ROOT = "";
 
 export const API_ROUTES = Object.freeze({
+    Bet: "/bet",
     Fighter: "/fighters",
     Listener: "/listener",
     Matchup: "/matchups",
