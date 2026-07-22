@@ -26,14 +26,14 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 2. `/health_check` handled before JSON body parsing
 3. `express.json()` parses body
 4. Routes under `MAIN_API_ROOT` (currently `""`) → `apiRouter`
-5. `apiRouter` applies `basicAuth` to every mount except `stateRouter`; the state router applies it per-route (`GET /state/balance`, `PUT /state/auto`), leaving `GET /state` and `GET /state/current` public
+5. `apiRouter` applies `basicAuth` to every mount except `stateRouter`; the state router applies it per-route (`GET /state/balance`, `PUT /state/auto`), leaving `GET /state` public
 6. `errorHandler` (4-arg) catches anything thrown by controllers
 
 **Key patterns:**
 
 - **`res.fail(errorObject)`** — added by the `fail` middleware (`src/shared/fail.js`); used everywhere for error responses. Error objects (`INTERNAL_SERVER_ERROR`, `NOT_FOUND`, `INVALID_VALUE`) are defined in `src/shared/errors.js` with shape `{ httpCode, message, errorCode }`.
 
-- **`basicAuth` (`src/shared/basicAuth.js`)** — HTTP Basic Auth middleware validating the `Authorization` header against `SALT_MINES_USER_NAME`/`SALT_MINES_USER_PASSWORD` (constant-time compare via SHA-256 + `timingSafeEqual`). Returns `401` with `WWW-Authenticate: Basic realm="salt-mines"` on failure (errorCode 70). Applied to all routes except `GET /state` and `GET /state/current`.
+- **`basicAuth` (`src/shared/basicAuth.js`)** — HTTP Basic Auth middleware validating the `Authorization` header against `SALT_MINES_USER_NAME`/`SALT_MINES_USER_PASSWORD` (constant-time compare via SHA-256 + `timingSafeEqual`). Returns `401` with `WWW-Authenticate: Basic realm="salt-mines"` on failure (errorCode 70). Applied to all routes except `GET /state`.
 
 - **Router `.param("uuid", ...)`** — each router validates the `:uuid` param with express-validator, runs `validationErrorHandler`, then `findFighterByUuid`/`findMatchupByUuid`, which loads the model instance into `req.model[ModelName]`. Controllers read from `req.model` rather than querying again.
 
@@ -49,8 +49,7 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 **Salty Bet scraping & predictions (`src/api/routers/state.js`):**
 
-- `GET /state` (`currentMatchupPrediction`) — fetches the API, finds or creates both fighters, and returns `{ p1, p2, p1WinChance }` using `getWinRate` (`src/shared/winRate.js`).
-- `GET /state/current` (`currentMatchData`) — read-only snapshot of the current match. Looks up existing fighters/matchup without creating them; mocks missing entries with zeroed stats. Returns `{ p1, p2, matchup, p1WinChance, p2WinChance, winner, mode }` with UUIDs stripped. Returns 422 for exhibition matches. Uses `getWinRateFromData` so win rates work even with mocked data.
+- `GET /state` (`currentMatchData`) — read-only snapshot of the current match. Looks up existing fighters/matchup without creating them; mocks missing entries with zeroed stats. Returns `{ p1, p2, matchup, p1WinChance, p2WinChance, winner, mode }` with UUIDs stripped. Returns 422 for exhibition matches. Uses `getWinRateFromData` so win rates work even with mocked data.
 - `GET /state/balance` (`currentBalance`) — **protected by `basicAuth`.** Fetches the Salty Bet home page (via the authenticated session in `saltyBet.js`, auto-signing-in if there's no cookie) and parses `<span id="balance">` out of the HTML. Returns `{ balance }` as a number (thousands separators stripped, parsed via `Number` to avoid a 32-bit cap). Fails with 500 errorCode 62 if credentials are unset, 502 errorCode 64 if the balance can't be read.
 - `PUT /state/auto` (`autoDataScrape`) — derives the winner from the API's `status` field (`"1"` = p1, `"2"` = p2). Compares against `LastBet` id=0; if unchanged, polls every 3s until data changes. If status isn't `"1"`/`"2"`, polls every 3s until a winner is determined (7-minute timeout per match). Only creates fighters/matchup when a winner is found. Uses `resolveMatchMode` with the `remaining` string captured *before* polling for the winner (since the API's `remaining` may already reflect the next match by the time the winner status appears). Accepts optional body `matchesToRecord` (int 1–25, default 1) to record multiple consecutive matches in one request, returning results keyed as `Match1`, `Match2`, etc. Optional body `predictions` (boolean) includes `p1WinChance` in each match result, calculated before stats are updated. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Validated by `autoScrapeValidator`.
 

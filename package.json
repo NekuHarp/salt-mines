@@ -3,7 +3,9 @@
     "version": "1.0.0",
     "author": "Nekyu Harken",
     "license": "UNLICENSED",
-    "engines": { "node": ">=24.0.0" },
+    "engines": {
+        "node": ">=24.0.0"
+    },
     "private": true,
     "type": "module",
     "scripts": {
@@ -29,5 +31,8 @@
         "eslint-plugin-security": "^4.0.0",
         "globals": "^16.3.0",
         "nodemon": "^3.0.0"
+    },
+    "overrides": {
+        "uuid": "^11.1.1"
     }
 }

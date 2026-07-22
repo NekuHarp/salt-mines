@@ -11,35 +11,6 @@ import { resolveMatchMode } from "../../shared/matchMode.js";
 
 const { Fighter, LastBet, Matchup, Remaining } = db;
 
-export async function currentMatchupPrediction(req, res) {
-    const response = await fetch(
-        `${SALTY_BET_BASE_URL}${SALTY_BET_STATE_PATH}`
-    );
-    if (!response.ok) {
-        return res.fail({
-            httpCode: 502,
-            message: "Salty Bet API request failed.",
-            errorCode: 40,
-        });
-    }
-
-    const { p1name, p2name } = await response.json();
-    if (!p1name || !p2name) {
-        return res.fail({
-            httpCode: 502,
-            message: "Salty Bet API response is missing fighter names.",
-            errorCode: 41,
-        });
-    }
-
-    const [p1] = await Fighter.findOrCreate({ where: { name: p1name } });
-    const [p2] = await Fighter.findOrCreate({ where: { name: p2name } });
-
-    const p1WinChance = await getWinRate(p1.uuid, p2.uuid);
-
-    return res.status(200).json({ p1, p2, p1WinChance });
-}
-
 export async function currentBalance(req, res) {
     let balance;
     try {

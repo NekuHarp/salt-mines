@@ -177,7 +177,11 @@ DATABASE_HOST=<tidb-host>
 DATABASE_PORT=4000
 DATABASE_NAME=<tidb-database>
 
-SALTY_BET_API_URL=<your-url>
+SALT_MINES_USER_NAME=<api-basic-auth-username>
+SALT_MINES_USER_PASSWORD=<api-basic-auth-password>
+
+SALTY_BET_USER_EMAIL=<salty-bet-account-email>
+SALTY_BET_USER_PWORD=<salty-bet-account-password>
 ```
 
 ---

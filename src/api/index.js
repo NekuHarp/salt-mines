@@ -13,9 +13,8 @@ import { basicAuth } from "../shared/index.js";
 
 export const apiRouter = Router();
 
-// Every route requires Basic Auth, except the two read-only state endpoints
-// (GET /state and GET /state/current), which the state router leaves public
-// while protecting its own PUT /auto route.
+// Every route requires Basic Auth, except the read-only GET /state snapshot,
+// which the state router leaves public while protecting its other routes.
 apiRouter.use(API_ROUTES.Bet, basicAuth, betRouter);
 apiRouter.use(API_ROUTES.Fighter, basicAuth, fighterRouter);
 apiRouter.use(API_ROUTES.Listener, basicAuth, listenerRouter);
