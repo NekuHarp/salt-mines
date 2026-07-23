@@ -23,7 +23,9 @@ let params = null;
 let matchesRecorded = 0;
 
 async function fetchSaltyBetData() {
-    const response = await fetch(`${SALTY_BET_BASE_URL}${SALTY_BET_STATE_PATH}`);
+    const response = await fetch(
+        `${SALTY_BET_BASE_URL}${SALTY_BET_STATE_PATH}`
+    );
     if (!response.ok) return null;
     return response.json();
 }
@@ -37,9 +39,18 @@ async function tick() {
         if (!data || !data.p1name || !data.p2name) return;
 
         const lastBet = await LastBet.findByPk(0);
-        const { p1name: lastP1, p2name: lastP2, status: lastStatus, remaining: lastRemaining } = lastBet.content ?? {};
+        const {
+            p1name: lastP1,
+            p2name: lastP2,
+            status: lastStatus,
+            remaining: lastRemaining,
+        } = lastBet.content ?? {};
 
-        if (data.p1name === lastP1 && data.p2name === lastP2 && data.status === lastStatus) {
+        if (
+            data.p1name === lastP1 &&
+            data.p2name === lastP2 &&
+            data.status === lastStatus
+        ) {
             return;
         }
 
@@ -93,8 +104,12 @@ async function tick() {
             return;
         }
 
-        const [p1] = await Fighter.findOrCreate({ where: { name: data.p1name } });
-        const [p2] = await Fighter.findOrCreate({ where: { name: data.p2name } });
+        const [p1] = await Fighter.findOrCreate({
+            where: { name: data.p1name },
+        });
+        const [p2] = await Fighter.findOrCreate({
+            where: { name: data.p2name },
+        });
 
         const [winner_fighter, loser_fighter] =
             winner === "p1" ? [p1, p2] : [p2, p1];
@@ -114,7 +129,10 @@ async function tick() {
 
         matchesRecorded++;
 
-        if (params?.matchesToRecord && matchesRecorded >= params.matchesToRecord) {
+        if (
+            params?.matchesToRecord &&
+            matchesRecorded >= params.matchesToRecord
+        ) {
             stop();
         }
     } finally {
@@ -162,9 +180,9 @@ function wagerPercent(mode, chance) {
     // Matchmaking tiers; exact boundaries fall to the lower (safer) tier.
     if (chance <= 60) return 5;
     if (chance <= 70) return 10;
-    if (chance <= 85) return 20;
-    if (chance <= 95) return 30;
-    return 50;
+    if (chance <= 85) return 15;
+    if (chance <= 95) return 20;
+    return 25;
 }
 
 async function autoBet(data) {

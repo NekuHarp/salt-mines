@@ -20,17 +20,17 @@ npm run dev
 ## Environment Variables
 
 | Variable                   | Description                                               |
-| -------------------------- | -------------------------------------------------------- |
-| `NODE_ENV`                 | `development`, `staging`, or `production`                |
-| `PORT`                     | Server port                                              |
-| `DATABASE_HOST`            | MySQL host                                               |
-| `DATABASE_PORT`            | MySQL port                                               |
-| `DATABASE_NAME`            | Database name                                            |
-| `DATABASE_USER`            | MySQL username                                           |
-| `DATABASE_PASSWORD`        | MySQL password                                           |
-| `SALT_MINES_USER_NAME`     | Username for the API's HTTP Basic Auth                   |
-| `SALT_MINES_USER_PASSWORD` | Password for the API's HTTP Basic Auth                   |
-| `SALTY_BET_USER_EMAIL`     | Salty Bet account email (used to authenticate and bet)   |
+| -------------------------- | --------------------------------------------------------- |
+| `NODE_ENV`                 | `development`, `staging`, or `production`                 |
+| `PORT`                     | Server port                                               |
+| `DATABASE_HOST`            | MySQL host                                                |
+| `DATABASE_PORT`            | MySQL port                                                |
+| `DATABASE_NAME`            | Database name                                             |
+| `DATABASE_USER`            | MySQL username                                            |
+| `DATABASE_PASSWORD`        | MySQL password                                            |
+| `SALT_MINES_USER_NAME`     | Username for the API's HTTP Basic Auth                    |
+| `SALT_MINES_USER_PASSWORD` | Password for the API's HTTP Basic Auth                    |
+| `SALTY_BET_USER_EMAIL`     | Salty Bet account email (used to authenticate and bet)    |
 | `SALTY_BET_USER_PWORD`     | Salty Bet account password (used to authenticate and bet) |
 
 The Salty Bet website URL is no longer an environment variable — it lives as a constant (`SALTY_BET_BASE_URL`) in `src/constants/app.js`.
@@ -102,13 +102,13 @@ PUT /state/auto     Auth     Record match result(s)
 
 ```json
 {
-  "p1": { "name": "...", "matches": 0, "wins": 0, "losses": 0 },
-  "p2": { "name": "...", "matches": 0, "wins": 0, "losses": 0 },
-  "matchup": { "matches": 0, "p1Wins": 0, "p2Wins": 0 },
-  "p1WinChance": 62.07,
-  "p2WinChance": 37.93,
-  "winner": "The match is still ongoing!",
-  "mode": "Matchmaking"
+    "p1": { "name": "...", "matches": 0, "wins": 0, "losses": 0 },
+    "p2": { "name": "...", "matches": 0, "wins": 0, "losses": 0 },
+    "matchup": { "matches": 0, "p1Wins": 0, "p2Wins": 0 },
+    "p1WinChance": 62.07,
+    "p2WinChance": 37.93,
+    "winner": "The match is still ongoing!",
+    "mode": "Matchmaking"
 }
 ```
 
@@ -116,20 +116,30 @@ Win rates are computed using a Bradley-Terry model (prior from general win rates
 
 **`GET /state/balance`** (`currentBalance`) — Fetches the Salty Bet home page using the authenticated session (signing in automatically if there is no session yet) and parses out the account balance. Returns it as a number (thousands separators stripped). Response: `{ "balance": 1000000 }`.
 
-**`PUT /state/auto`** — Derives the winner from the API's `status` field (`"1"` → p1 wins, `"2"` → p2 wins). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, polls every 3 seconds until the data changes. If `status` is not `"1"` or `"2"`, polls every 3 seconds until a winner is determined (7-minute timeout per match). Only creates fighters and records stats when a winner is found. Match mode is detected via `resolveMatchMode` using the `remaining` string captured *before* polling for the winner. Updates `LastBet` after each match.
+**`PUT /state/auto`** — Derives the winner from the API's `status` field (`"1"` → p1 wins, `"2"` → p2 wins). Before acting, compares `p1name`, `p2name`, and `status` against the last seen values stored in `LastBet` (id=0). If all three are identical, polls every 3 seconds until the data changes. If `status` is not `"1"` or `"2"`, polls every 3 seconds until a winner is determined (7-minute timeout per match). Only creates fighters and records stats when a winner is found. Match mode is detected via `resolveMatchMode` using the `remaining` string captured _before_ polling for the winner. Updates `LastBet` after each match.
 
-| Field             | Type    | Description                                              |
-| ----------------- | ------- | -------------------------------------------------------- |
-| `matchesToRecord` | integer | Optional (1–25, default `1`). Number of matches to record in a single request. |
-| `predictions`     | boolean | Optional. If `true`, includes `p1WinChance` in each match result (calculated before stats are updated). |
+| Field             | Type    | Description                                                                                                    |
+| ----------------- | ------- | -------------------------------------------------------------------------------------------------------------- |
+| `matchesToRecord` | integer | Optional (1–25, default `1`). Number of matches to record in a single request.                                 |
+| `predictions`     | boolean | Optional. If `true`, includes `p1WinChance` in each match result (calculated before stats are updated).        |
 | `recordRemaining` | boolean | Optional. If `true`, stores unique `remaining` strings and their detected match mode in the `Remaining` table. |
 
 When `matchesToRecord` > 1, the endpoint loops, waiting for each successive match to complete before moving to the next. Each match has its own 7-minute timeout. The response contains results keyed as `Match1`, `Match2`, etc.:
 
 ```json
 {
-  "Match1": { "p1": { "...": "..." }, "p2": { "...": "..." }, "matchup": { "...": "..." }, "p1WinChance": 62.07 },
-  "Match2": { "p1": { "...": "..." }, "p2": { "...": "..." }, "matchup": { "...": "..." }, "p1WinChance": 45.3 }
+    "Match1": {
+        "p1": { "...": "..." },
+        "p2": { "...": "..." },
+        "matchup": { "...": "..." },
+        "p1WinChance": 62.07
+    },
+    "Match2": {
+        "p1": { "...": "..." },
+        "p2": { "...": "..." },
+        "matchup": { "...": "..." },
+        "p1WinChance": 45.3
+    }
 }
 ```
 
@@ -148,10 +158,10 @@ Betting requires a Salty Bet session cookie, kept in memory and separate from th
 
 **`PUT /bet`** — Places a bet on the current match. The match's `status` must be `open` (betting only opens for a short window before each match), otherwise the endpoint returns `422`. On a bet the site rejects, returns `502`. On success returns `{ "placed": true, "selectedplayer": "player1", "wager": 500 }`.
 
-| Field            | Type    | Description                                     |
-| ---------------- | ------- | ----------------------------------------------- |
-| `selectedplayer` | string  | Required. `"player1"` or `"player2"`.           |
-| `wager`          | integer | Required. Amount to bet (≥ 1).                  |
+| Field            | Type    | Description                           |
+| ---------------- | ------- | ------------------------------------- |
+| `selectedplayer` | string  | Required. `"player1"` or `"player2"`. |
+| `wager`          | integer | Required. Amount to bet (≥ 1).        |
 
 ### Listener (background scraping)
 
@@ -165,12 +175,12 @@ PUT /listener/stop   Auth   Stop listener
 
 **`PUT /listener/start`** — Starts the background listener. Returns `409` if already running. The listener polls the Salty Bet state URL every 3 seconds and automatically records match results (fire-and-forget). Accepts an optional body:
 
-| Field             | Type    | Description                                              |
-| ----------------- | ------- | -------------------------------------------------------- |
-| `matchesToRecord` | integer | Optional (1–25). If provided, the listener auto-stops after recording that many matches. If omitted, runs until manually stopped. |
+| Field             | Type    | Description                                                                                                                             |
+| ----------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `matchesToRecord` | integer | Optional (1–25). If provided, the listener auto-stops after recording that many matches. If omitted, runs until manually stopped.       |
 | `strictMode`      | boolean | Optional (default `false`). Skips exhibition matches always; when `true`, also skips tournament matches — only matchmaking is recorded. |
-| `recordRemaining` | boolean | Optional (default `false`). Stores unique `remaining` strings and their detected match mode in the `Remaining` table. |
-| `bettingMode`     | boolean | Optional (default `false`). Automatically places a bet each time a match's betting window opens (see below). |
+| `recordRemaining` | boolean | Optional (default `false`). Stores unique `remaining` strings and their detected match mode in the `Remaining` table.                   |
+| `bettingMode`     | boolean | Optional (default `false`). Automatically places a bet each time a match's betting window opens (see below).                            |
 
 **`PUT /listener/stop`** — Stops the background listener. Returns `409` if not running.
 
@@ -182,13 +192,13 @@ When `bettingMode` is enabled, the listener places one bet per match, the moment
 - **Tournament** — all-in (100% of balance) on the favourite.
 - **Matchmaking** — tiered by the favourite's win chance `c` (exact boundaries fall to the lower tier):
 
-  | Win chance    | Wager (% of balance) |
-  | ------------- | -------------------- |
-  | `c ≤ 60`      | 5%                   |
-  | `60 < c ≤ 70` | 10%                  |
-  | `70 < c ≤ 85` | 20%                  |
-  | `85 < c ≤ 95` | 30%                  |
-  | `c > 95`      | 50%                  |
+    | Win chance    | Wager (% of balance) |
+    | ------------- | -------------------- |
+    | `c ≤ 60`      | 5%                   |
+    | `60 < c ≤ 70` | 10%                  |
+    | `70 < c ≤ 85` | 15%                  |
+    | `85 < c ≤ 95` | 20%                  |
+    | `c > 95`      | 25%                  |
 
 Betting is skipped silently if the balance can't be read, is ≤ 0, or the computed wager rounds to < 1. Betting failures never stop the listener.
 
@@ -196,15 +206,15 @@ Betting is skipped silently if the balance can't be read, is ≤ 0, or the compu
 
 All list endpoints accept:
 
-| Parameter       | Description                                                           |
-| --------------- | --------------------------------------------------------------------- |
-| `offset`        | Records to skip (default: `0`)                                        |
-| `limit`         | Max records to return (default: `1000`, max: `50000`)                 |
+| Parameter       | Description                                                          |
+| --------------- | -------------------------------------------------------------------- |
+| `offset`        | Records to skip (default: `0`)                                       |
+| `limit`         | Max records to return (default: `1000`, max: `50000`)                |
 | `sort`          | Field to sort by; prefix with `-` for descending (e.g. `-createdAt`) |
-| `createdBefore` | ISO 8601 upper bound on `createdAt`                                   |
-| `createdAfter`  | ISO 8601 lower bound on `createdAt`                                   |
-| `updatedBefore` | ISO 8601 upper bound on `updatedAt`                                   |
-| `updatedAfter`  | ISO 8601 lower bound on `updatedAt`                                   |
+| `createdBefore` | ISO 8601 upper bound on `createdAt`                                  |
+| `createdAfter`  | ISO 8601 lower bound on `createdAt`                                  |
+| `updatedBefore` | ISO 8601 upper bound on `updatedAt`                                  |
+| `updatedAfter`  | ISO 8601 lower bound on `updatedAt`                                  |
 
 Sortable fields — fighters: `name`, `matches`, `wins`, `losses`, `createdAt`, `updatedAt`. Matchups: `P1_name`, `P2_name`, `createdAt`, `updatedAt`. Remainings: `value`, `mode`, `createdAt`, `updatedAt`.
 
@@ -239,17 +249,17 @@ Available operators: `equals`, `not`, `contains`, `lte`, `gte`, `lt`, `gt`, `bet
 
 Singleton table (always id=0). Stores the last values seen by `PUT /state/auto` and the listener to detect changes.
 
-| Field     | Type | Notes                                                     |
-| --------- | ---- | --------------------------------------------------------- |
-| `id`      | `0`  | Always 0; pre-seeded by migration                         |
-| `content` | JSON | `{ p1name, p2name, status, remaining }` or `null`         |
+| Field     | Type | Notes                                             |
+| --------- | ---- | ------------------------------------------------- |
+| `id`      | `0`  | Always 0; pre-seeded by migration                 |
+| `content` | JSON | `{ p1name, p2name, status, remaining }` or `null` |
 
 ### Remaining
 
 Stores unique `remaining` strings from the Salty Bet API along with their detected match mode. Populated when `recordRemaining: true` is passed to `PUT /state/auto` or `PUT /listener/start`, or via the `/remainings` CRUD endpoints. Once populated, entries in this table take priority over the heuristic-based detection — allowing manual correction of misdetected modes.
 
-| Field   | Type    | Notes                                              |
-| ------- | ------- | -------------------------------------------------- |
-| `uuid`  | UUID v4 | Auto-generated PK                                  |
-| `value` | string  | Unique `remaining` string from the API             |
-| `mode`  | enum    | `Matchmaking`, `Tournament`, or `Exhibition`       |
+| Field   | Type    | Notes                                        |
+| ------- | ------- | -------------------------------------------- |
+| `uuid`  | UUID v4 | Auto-generated PK                            |
+| `value` | string  | Unique `remaining` string from the API       |
+| `mode`  | enum    | `Matchmaking`, `Tournament`, or `Exhibition` |
