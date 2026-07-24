@@ -9,6 +9,11 @@ import {
 // Balance lives in <span id="balance">1,000,000</span> on the home page.
 const BALANCE_REGEX = /<span[^>]*id="balance"[^>]*>([^<]*)<\/span>/i;
 
+// How much HTML around the balance element to capture for diagnostics. Wide
+// enough to include any sibling "tournament balance" indicator near it.
+const BALANCE_CONTEXT_BEFORE = 200;
+const BALANCE_CONTEXT_AFTER = 800;
+
 // The authenticated session cookie is kept in memory between requests.
 // Salty Bet sessions are short-lived, so placeBet() re-authenticates on demand.
 let sessionCookie = null;
@@ -113,13 +118,24 @@ export async function placeBet({ selectedplayer, wager }) {
     return result;
 }
 
+// Extracts a window of HTML around the balance element so the surrounding
+// markup (e.g. a "tournament balance" indicator) can be inspected later.
+function extractBalanceContext(html) {
+    const index = html.search(/id="balance(wrapper)?"/i);
+    if (index === -1) return null;
+
+    const start = Math.max(0, index - BALANCE_CONTEXT_BEFORE);
+    const end = index + BALANCE_CONTEXT_AFTER;
+    return html.slice(start, end);
+}
+
 /**
- * Fetches the home page with the current session cookie and extracts the
- * balance from <span id="balance">, returning it as a number (the raw value
- * is comma-formatted, e.g. "1,000,000"). Returns null when the balance cannot
- * be found (e.g. an unauthenticated response) or isn't a valid number.
+ * Fetches the home page with the current session cookie and extracts both the
+ * balance (as a number; the raw value is comma-formatted, e.g. "1,000,000")
+ * and a snippet of the surrounding HTML. `balance` is null when it cannot be
+ * found (e.g. an unauthenticated response) or isn't a valid number.
  */
-async function fetchBalance() {
+async function fetchBalancePage() {
     const response = await fetch(`${SALTY_BET_BASE_URL}${SALTY_BET_HOME_PATH}`, {
         headers: {
             "User-Agent": SALTY_BET_USER_AGENT,
@@ -127,37 +143,48 @@ async function fetchBalance() {
         },
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return { balance: null, context: null };
 
     const html = await response.text();
+    const context = extractBalanceContext(html);
+
     const match = html.match(BALANCE_REGEX);
-    if (!match) return null;
+    if (!match) return { balance: null, context };
 
     // Strip the thousands separators before parsing. Number (not parseInt)
     // keeps full precision and won't silently cap at the 32-bit int max.
     const balance = Number(match[1].replace(/,/g, "").trim());
-    return Number.isNaN(balance) ? null : balance;
+    return { balance: Number.isNaN(balance) ? null : balance, context };
 }
 
 /**
- * Returns the account balance as a number, authenticating first if there is no
- * session and re-authenticating once if the balance can't be read (session
- * likely expired). Returns null on failure.
+ * Returns the account balance and surrounding HTML as `{ balance, context }`,
+ * authenticating first if there is no session and re-authenticating once if
+ * the balance can't be read (session likely expired). `balance` is null on failure.
  */
-export async function getBalance() {
+export async function getBalanceInfo() {
     if (!sessionCookie) {
         await authenticate();
     }
 
-    let balance = await fetchBalance();
+    let info = await fetchBalancePage();
 
-    if (balance === null) {
+    if (info.balance === null) {
         const authenticated = await authenticate();
         if (authenticated) {
-            balance = await fetchBalance();
+            info = await fetchBalancePage();
         }
     }
 
+    return info;
+}
+
+/**
+ * Returns the account balance as a number (null on failure). Thin wrapper over
+ * getBalanceInfo for callers that don't need the surrounding HTML.
+ */
+export async function getBalance() {
+    const { balance } = await getBalanceInfo();
     return balance;
 }
 

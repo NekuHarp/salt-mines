@@ -16,7 +16,7 @@ There are no tests.
 
 ## Architecture
 
-Express REST API for tracking fighters and head-to-head matchups, with live data scraping from Salty Bet. Four resources: `Fighter`, `Matchup`, `LastBet`, `Remaining`.
+Express REST API for tracking fighters and head-to-head matchups, with live data scraping from Salty Bet. Models: `Fighter`, `Matchup`, `LastBet`, `Remaining`, `TournamentLog`.
 
 **Stack:** Node.js (ESM, v24), Express 4, Sequelize 6, MySQL (mysql2), express-validator, helmet, qs
 
@@ -45,7 +45,7 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 
 - **Validator arrays** — validators are exported as flat arrays of express-validator middleware + `validationErrorHandler` appended at the end. Shared validator builders (`paginationValidatorBuilder`, `sortValidatorBuilder`, `timestampValidator`) live in `src/api/validators/shared/`.
 
-- **Model factory pattern** — each model file exports `(sequelize) => { class Foo extends Sequelize.Model {} ... return Foo; }`. `src/database/models/index.js` is the single import point for all models and the sequelize instance (`db.Fighter`, `db.Matchup`, `db.LastBet`, `db.Remaining`, `db.sequelize`).
+- **Model factory pattern** — each model file exports `(sequelize) => { class Foo extends Sequelize.Model {} ... return Foo; }`. `src/database/models/index.js` is the single import point for all models and the sequelize instance (`db.Fighter`, `db.Matchup`, `db.LastBet`, `db.Remaining`, `db.TournamentLog`, `db.sequelize`).
 
 **Salty Bet scraping & predictions (`src/api/routers/state.js`):**
 
@@ -58,7 +58,7 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 - Placing a bet requires an authenticated Salty Bet session (cookie), which is separate from the API's own Basic Auth. `src/shared/saltyBet.js` manages that session in memory:
     - `authenticate()` — POSTs `SALTY_BET_USER_EMAIL`/`SALTY_BET_USER_PWORD` (+ `authenticate=signin`) as `application/x-www-form-urlencoded` to `/authenticate?signin=1` with `redirect: "manual"`, and stores the `Set-Cookie` values as the session cookie. Returns `true` if a cookie was obtained. Throws if credentials are unset.
     - `placeBet({ selectedplayer, wager })` — authenticates if there is no session, POSTs the bet to `/ajax_place_bet.php`, and re-authenticates once + retries if the bet does not succeed (session likely expired). The endpoint returns `1` on success / `0` on failure; `success` is `body === "1"`.
-    - `getBalance()` — GETs the home page with the session cookie, re-authenticating once if the balance can't be read, and returns the `<span id="balance">` value as a number (used by `GET /state/balance`).
+    - `getBalanceInfo()` — GETs the home page with the session cookie (re-authenticating once if the balance can't be read) and returns `{ balance, context }`: the `<span id="balance">` value as a number, plus a snippet of the surrounding HTML (for discovering the "tournament balance" indicator). `getBalance()` is a thin wrapper returning just `balance` (used by `GET /state/balance`).
 - `PUT /bet/login` (`login`) — forces authentication; returns `{ authenticated: true }` or fails (500 errorCode 62 if credentials unset, 502 errorCode 63 if auth failed).
 - `PUT /bet` (`bet`) — body `selectedplayer` (`"player1"`/`"player2"`, from `SELECTED_PLAYERS`) and `wager` (int ≥ 1), validated by `placeBetValidator`. First fetches the state and requires `status === "open"` (betting only opens for a short window before each match), else 422 errorCode 60. On a rejected bet returns 502 errorCode 61. On success returns `{ placed: true, selectedplayer, wager }`.
 
@@ -69,12 +69,13 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 - `PUT /listener/start` — starts the listener; returns `409` if already running. Optional body `matchesToRecord` (int 1–25) auto-stops after that many matches. Optional body `strictMode` (boolean, default `false`) skips exhibition matches always and tournament matches when `true`, only recording matchmaking matches. Optional body `recordRemaining` (boolean, default `false`) stores unique `remaining` strings and their detected mode in the `Remaining` table. Optional body `bettingMode` (boolean, default `false`) automatically places a bet each time a match's betting window opens (see below).
 - `PUT /listener/stop` — stops the listener; returns `409` if not running.
 
-**Auto-betting (`bettingMode`, in `src/shared/listener.js`):** when enabled, the tick that first sees `status === "open"` for a match places one bet (the top-of-tick dedup against `LastBet` guarantees a single bet per window). It computes the current P1 win chance via `computeP1WinChance` (stored fighter/matchup stats, zeroed when absent, same as `currentMatchData`), bets on the favourite (a 50-50 split goes to `player1`), and sizes the wager against the live `getBalance()`, rounded up (`Math.ceil`):
+**Auto-betting (`bettingMode`, in `src/shared/listener.js`):** when enabled, the tick that first sees `status === "open"` for a match places one bet (the top-of-tick dedup against `LastBet` guarantees a single bet per window). It computes the current P1 win chance via `computeP1WinChance` (stored fighter/matchup stats, zeroed when absent, same as `currentMatchData`), bets on the favourite (a 50-50 split goes to `player1`), and sizes the wager against the live `getBalanceInfo()`, rounded up (`Math.ceil`):
 
 - **Exhibition** — never bets.
 - **Tournament** — all-in (100% of balance) on the favourite.
 - **Matchmaking** — tiered by the favourite's win chance `c` (exact boundaries fall to the lower tier): `c<=60` → 5%, `60<c<=70` → 10%, `70<c<=85` → 15%, `85<c<=95` → 20%, `c>95` → 25%.
 - Skips silently if the balance can't be read, is ≤ 0, or the computed wager is < 1. Betting failures are caught so they never stop the listener.
+- **Tournament diagnostics:** every tournament-detected bet writes a `TournamentLog` row (fighters, `remaining`, balance, and a `balanceContext` HTML snippet) *before* the bet is placed, then prunes the table to the newest 50 rows (`TOURNAMENT_LOG_LIMIT`). This is intended to surface buggy Salty Bet `remaining` strings that misclassify matchmaking as tournament, and to capture the "tournament balance" indicator markup during a real tournament. **Note:** there are currently no safety guards on the all-in — a misclassified matchmaking match still bets 100% of the real balance.
 - Concurrency guard (`processing` flag) prevents overlapping ticks. Errors are silently skipped.
 
 **Match mode detection (`src/shared/matchMode.js`):**
@@ -96,7 +97,8 @@ Express REST API for tracking fighters and head-to-head matchups, with live data
 - `Fighter` hasMany `Matchup` as both `MatchupsAsP1` (foreignKey `p1Uuid`) and `MatchupsAsP2` (foreignKey `p2Uuid`)
 - `Matchup` belongsTo `Fighter` as `P1` and `P2`; deleting a Fighter cascades
 - `LastBet` is a singleton (always id=0, pre-seeded by migration); `content` JSON stores `{ p1name, p2name, status, remaining }`; no associations
-- `Remaining` stores unique `remaining` strings from the Salty Bet API with their detected match mode (`exhibition`, `tournament`, `matchmaking`); no associations
+- `Remaining` stores unique `remaining` strings from the Salty Bet API with their detected match mode (`Matchmaking`, `Tournament`, `Exhibition`); no associations
+- `TournamentLog` is a capped diagnostic log (newest 50 rows) of tournament-detected auto-bets; `uuid` PK, no associations
 
 ## Code Conventions
 

@@ -202,6 +202,8 @@ When `bettingMode` is enabled, the listener places one bet per match, the moment
 
 Betting is skipped silently if the balance can't be read, is ≤ 0, or the computed wager rounds to < 1. Betting failures never stop the listener.
 
+Every tournament-detected bet is recorded in the `TournamentLog` table (capped at the newest 50 rows) with the fighters, the `remaining` string that triggered the tournament classification, the balance, and a snippet of the surrounding balance HTML. This is a diagnostic aid for spotting buggy Salty Bet `remaining` strings and for capturing the "tournament balance" indicator markup during a real tournament. Note that there is currently no safeguard on the tournament all-in: a matchmaking match misclassified as a tournament will bet 100% of the real balance.
+
 ## Query Parameters
 
 All list endpoints accept:
@@ -263,3 +265,17 @@ Stores unique `remaining` strings from the Salty Bet API along with their detect
 | `uuid`  | UUID v4 | Auto-generated PK                            |
 | `value` | string  | Unique `remaining` string from the API       |
 | `mode`  | enum    | `Matchmaking`, `Tournament`, or `Exhibition` |
+
+### TournamentLog
+
+Capped diagnostic log (newest 50 rows) of every bet the auto-bettor placed while it detected a tournament. Written before the bet is placed and pruned on each insert. Used to inspect buggy `remaining` strings and to capture the "tournament balance" indicator markup during a real tournament.
+
+| Field            | Type    | Notes                                                      |
+| ---------------- | ------- | ---------------------------------------------------------- |
+| `uuid`           | UUID v4 | Auto-generated PK                                          |
+| `p1name`         | string  | Player 1 name                                              |
+| `p2name`         | string  | Player 2 name                                              |
+| `remaining`      | string  | The `remaining` string that triggered tournament detection |
+| `balance`        | bigint  | Balance read at bet time (nullable)                        |
+| `balanceContext` | text    | HTML snippet around the balance element (nullable)         |
+| `selectedplayer` | string  | `"player1"` or `"player2"` — the favourite that was bet on |

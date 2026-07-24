@@ -4,17 +4,21 @@ import {
     SALTY_BET_STATE_PATH,
     SELECTED_PLAYERS,
 } from "../constants/index.js";
-import { getBalance, placeBet } from "./saltyBet.js";
+import { getBalanceInfo, placeBet } from "./saltyBet.js";
 import { resolveMatchMode, shouldRecord } from "./matchMode.js";
+import { Op } from "sequelize";
 import db from "../database/models/index.js";
 import { getWinRateFromData } from "./winRate.js";
 
-const { Fighter, LastBet, Matchup, Remaining } = db;
+const { Fighter, LastBet, Matchup, Remaining, TournamentLog } = db;
 
 const POLL_INTERVAL_MS = 3000;
 
 // Betting is only accepted while the current match's status is "open".
 const BETTING_OPEN_STATUS = "open";
+
+// How many of the most recent tournament-detected bets to keep for diagnostics.
+const TOURNAMENT_LOG_LIMIT = 50;
 
 let intervalId = null;
 let active = false;
@@ -185,6 +189,29 @@ function wagerPercent(mode, chance) {
     return 25;
 }
 
+// Keeps the tournament log capped at the newest TOURNAMENT_LOG_LIMIT rows.
+async function pruneTournamentLog() {
+    const boundary = await TournamentLog.findAll({
+        order: [["createdAt", "DESC"]],
+        offset: TOURNAMENT_LOG_LIMIT,
+        limit: 1,
+        attributes: ["createdAt"],
+    });
+
+    if (boundary.length) {
+        await TournamentLog.destroy({
+            where: { createdAt: { [Op.lt]: boundary[0].createdAt } },
+        });
+    }
+}
+
+// Records the context of a tournament-detected bet so buggy Salty Bet strings
+// and the "tournament balance" indicator can be inspected after the fact.
+async function logTournamentBet(entry) {
+    await TournamentLog.create(entry);
+    await pruneTournamentLog();
+}
+
 async function autoBet(data) {
     const mode = await resolveMatchMode(data.remaining);
     if (mode === MATCH_MODES.EXHIBITION) return;
@@ -195,11 +222,24 @@ async function autoBet(data) {
     const selectedplayer = betOnP1 ? SELECTED_PLAYERS.P1 : SELECTED_PLAYERS.P2;
     const chance = betOnP1 ? p1WinChance : 100 - p1WinChance;
 
-    const balance = await getBalance();
+    const { balance, context } = await getBalanceInfo();
     if (balance === null || balance <= 0) return;
 
     const wager = Math.ceil((balance * wagerPercent(mode, chance)) / 100);
     if (wager < 1) return;
+
+    // Capture the context of every tournament-detected bet (before placing it,
+    // so a real tournament is recorded even if the bet call fails).
+    if (mode === MATCH_MODES.TOURNAMENT) {
+        await logTournamentBet({
+            p1name: data.p1name,
+            p2name: data.p2name,
+            remaining: data.remaining,
+            balance,
+            balanceContext: context,
+            selectedplayer,
+        });
+    }
 
     await placeBet({ selectedplayer, wager });
 }
