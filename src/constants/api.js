@@ -9,6 +9,7 @@ export const API_ROUTES = Object.freeze({
     Fighter: "/fighters",
     Listener: "/listener",
     Matchup: "/matchups",
+    Prediction: "/predictions",
     Remaining: "/remainings",
     State: "/state",
 });
@@ -31,6 +32,22 @@ export const PAGINATION = Object.freeze({
 export const SORTABLE_COLUMNS = Object.freeze({
     FIGHTERS: ["name", "matches", "wins", "losses", "createdAt", "updatedAt"],
     MATCHUPS: ["P1_name", "P2_name", "createdAt", "updatedAt"],
+    // Excludes the stat snapshot columns (p1Matches, h2hP1Wins, ...): they are
+    // inputs to p1WinChance rather than things worth ordering a log by.
+    PREDICTIONS: [
+        "P1_name",
+        "P2_name",
+        "mode",
+        "winner",
+        "p1WinChance",
+        "p1Total",
+        "p2Total",
+        "selectedPlayer",
+        "wager",
+        "balanceBefore",
+        "createdAt",
+        "updatedAt",
+    ],
     REMAININGS: ["value", "mode", "createdAt", "updatedAt"],
 });
 

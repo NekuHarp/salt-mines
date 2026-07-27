@@ -1,15 +1,16 @@
 import {
     MATCH_MODES,
+    MATCH_WINNERS,
     SALTY_BET_BASE_URL,
     SALTY_BET_STATE_PATH,
     SELECTED_PLAYERS,
 } from "../constants/index.js";
 import { getBalance, placeBet } from "./saltyBet.js";
+import { getHeadToHead, getWinRateFromData } from "./winRate.js";
 import { resolveMatchMode, shouldRecord } from "./matchMode.js";
 import db from "../database/models/index.js";
-import { getWinRateFromData } from "./winRate.js";
 
-const { Fighter, LastBet, Matchup, Remaining } = db;
+const { Fighter, LastBet, Matchup, Prediction, Remaining } = db;
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -55,43 +56,28 @@ async function tick() {
         }
 
         const winner =
-            data.status === "1" ? "p1" : data.status === "2" ? "p2" : null;
+            data.status === "1"
+                ? MATCH_WINNERS.P1
+                : data.status === "2"
+                  ? MATCH_WINNERS.P2
+                  : null;
 
-        if (winner) {
-            // Use the remaining from the previous poll (before winner was determined)
-            // because the API's remaining field may already reflect the next match
-            const remaining = lastRemaining ?? data.remaining;
-            const mode = await resolveMatchMode(remaining);
-
-            if (params?.recordRemaining && remaining) {
-                await Remaining.findOrCreate({
-                    where: { value: remaining },
-                    defaults: { mode },
-                });
-            }
-
-            await lastBet.update({
-                content: {
-                    p1name: data.p1name,
-                    p2name: data.p2name,
-                    status: data.status,
-                    remaining: data.remaining,
-                },
-            });
-
-            if (!shouldRecord(mode, params?.strictMode)) return;
-        } else {
+        if (!winner) {
             // A new match's betting window just opened. This branch runs once
             // per window (subsequent identical ticks early-return above), so we
             // place at most one automatic bet per match.
+            let placedBet = null;
             if (params?.bettingMode && data.status === BETTING_OPEN_STATUS) {
                 try {
-                    await autoBet(data);
+                    placedBet = await autoBet(data);
                 } catch {
                     // A betting failure must not stop the listener.
                 }
             }
 
+            const isNewPairing =
+                data.p1name !== lastP1 || data.p2name !== lastP2;
+
             await lastBet.update({
                 content: {
                     p1name: data.p1name,
@@ -99,10 +85,48 @@ async function tick() {
                     status: data.status,
                     remaining: data.remaining,
                 },
+                // A stored bet belongs to the pairing it was placed on and is
+                // left untouched across that match's remaining ticks. Reset it
+                // whenever a new pairing appears, so a missed result tick can
+                // never leak a stale bet onto the next match.
+                ...(isNewPairing || placedBet ? { bet: placedBet } : {}),
             });
 
             return;
         }
+
+        // Use the remaining from the previous poll (before winner was determined)
+        // because the API's remaining field may already reflect the next match
+        const remaining = lastRemaining ?? data.remaining;
+        const mode = await resolveMatchMode(remaining);
+
+        if (params?.recordRemaining && remaining) {
+            await Remaining.findOrCreate({
+                where: { value: remaining },
+                defaults: { mode },
+            });
+        }
+
+        // Same guard from the other side: the bet on file is only this match's
+        // if the pairing hasn't changed. If the listener missed this match's
+        // earlier ticks it belongs to an earlier match and is discarded.
+        const bet =
+            data.p1name === lastP1 && data.p2name === lastP2
+                ? (lastBet.bet ?? null)
+                : null;
+
+        await lastBet.update({
+            content: {
+                p1name: data.p1name,
+                p2name: data.p2name,
+                status: data.status,
+                remaining: data.remaining,
+            },
+            // Consumed, or discarded as stale.
+            bet: null,
+        });
+
+        if (!shouldRecord(mode, params?.strictMode)) return;
 
         const [p1] = await Fighter.findOrCreate({
             where: { name: data.p1name },
@@ -112,16 +136,24 @@ async function tick() {
         });
 
         const [winner_fighter, loser_fighter] =
-            winner === "p1" ? [p1, p2] : [p2, p1];
+            winner === MATCH_WINNERS.P1 ? [p1, p2] : [p2, p1];
 
         const [matchup] = await Matchup.findOrCreate({
             where: { p1Uuid: p1.uuid, p2Uuid: p2.uuid },
         });
 
+        // Written before the increments below so the stats it captures are the
+        // ones the prediction was made from. Matches are sequential and the
+        // listener is the only writer, so these rows have not moved since
+        // autoBet read them at the start of this match.
+        await logPrediction({ data, p1, p2, winner, mode, bet });
+
         await Promise.all([
             matchup.increment({
                 matches: 1,
-                ...(winner === "p1" ? { p1Wins: 1 } : { p2Wins: 1 }),
+                ...(winner === MATCH_WINNERS.P1
+                    ? { p1Wins: 1 }
+                    : { p2Wins: 1 }),
             }),
             winner_fighter.increment({ matches: 1, wins: 1 }),
             loser_fighter.increment({ matches: 1, losses: 1 }),
@@ -155,21 +187,66 @@ async function computeP1WinChance(data) {
         ? { matches: p2Record.matches, wins: p2Record.wins }
         : { matches: 0, wins: 0 };
 
-    let matchup = { matches: 0, p1Wins: 0, p2Wins: 0 };
-    if (p1Record && p2Record) {
-        const matchupRecord = await Matchup.findOne({
-            where: { p1Uuid: p1Record.uuid, p2Uuid: p2Record.uuid },
-        });
-        if (matchupRecord) {
-            matchup = {
-                matches: matchupRecord.matches,
-                p1Wins: matchupRecord.p1Wins,
-                p2Wins: matchupRecord.p2Wins,
-            };
-        }
-    }
+    const matchup =
+        p1Record && p2Record
+            ? await getHeadToHead(p1Record.uuid, p2Record.uuid)
+            : { matches: 0, p1Wins: 0, p2Wins: 0 };
 
     return getWinRateFromData(p1, p2, matchup);
+}
+
+/**
+ * The state API reports pots as comma-formatted strings ("1,234,567"), and as
+ * "0" for both until betting locks. Number (not parseInt) keeps full precision
+ * and won't silently cap at the 32-bit int max. Returns null when the value is
+ * missing or unparseable, rather than writing a wrong pot.
+ */
+function parsePot(value) {
+    const raw = String(value ?? "")
+        .replace(/,/g, "")
+        .trim();
+    if (!raw) return null;
+
+    const pot = Number(raw);
+    return Number.isFinite(pot) && pot >= 0 ? pot : null;
+}
+
+/**
+ * Records one resolved match: the prediction, the fighter and head-to-head
+ * stats it was derived from, the final pots, and the bet if one was placed.
+ *
+ * Must be called before the caller increments any stats, and only for matches
+ * shouldRecord accepts. Best-effort — a logging failure must not stop the
+ * match from being recorded, nor stop the listener.
+ */
+async function logPrediction({ data, p1, p2, winner, mode, bet }) {
+    try {
+        const h2h = await getHeadToHead(p1.uuid, p2.uuid);
+
+        await Prediction.create({
+            p1Uuid: p1.uuid,
+            p2Uuid: p2.uuid,
+            mode,
+            winner,
+            // Recomputed rather than carried over from bet time: the inputs are
+            // untouched, so this is the same number autoBet sized the wager
+            // against, and it is available even when no bet was placed.
+            p1WinChance: getWinRateFromData(p1, p2, h2h),
+            p1Matches: p1.matches,
+            p1Wins: p1.wins,
+            p2Matches: p2.matches,
+            p2Wins: p2.wins,
+            h2hMatches: h2h.matches,
+            h2hP1Wins: h2h.p1Wins,
+            p1Total: parsePot(data.p1total),
+            p2Total: parsePot(data.p2total),
+            selectedPlayer: bet?.selectedPlayer ?? null,
+            wager: bet?.wager ?? null,
+            balanceBefore: bet?.balanceBefore ?? null,
+        });
+    } catch {
+        // Best-effort: see above.
+    }
 }
 
 // Fraction (%) of the balance to wager on the favourite, given the match mode
@@ -185,9 +262,18 @@ function wagerPercent(mode, chance) {
     return 25;
 }
 
+/**
+ * Places the automatic bet for the match whose betting window just opened.
+ *
+ * Returns `{ selectedPlayer, wager, balanceBefore }` describing the bet that
+ * was actually accepted, so it can be stored against the match and logged when
+ * it resolves, or null when no bet was placed. Returning a record for a
+ * skipped or rejected bet would put a wager in the history that never left the
+ * account, which is exactly what the log exists to rule out.
+ */
 async function autoBet(data) {
     const mode = await resolveMatchMode(data.remaining);
-    if (mode === MATCH_MODES.EXHIBITION) return;
+    if (mode === MATCH_MODES.EXHIBITION) return null;
 
     const p1WinChance = await computeP1WinChance(data);
     // Bet on the favourite; a 50-50 split goes to player1.
@@ -196,12 +282,15 @@ async function autoBet(data) {
     const chance = betOnP1 ? p1WinChance : 100 - p1WinChance;
 
     const balance = await getBalance();
-    if (balance === null || balance <= 0) return;
+    if (balance === null || balance <= 0) return null;
 
     const wager = Math.ceil((balance * wagerPercent(mode, chance)) / 100);
-    if (wager < 1) return;
+    if (wager < 1) return null;
 
-    await placeBet({ selectedplayer, wager });
+    const result = await placeBet({ selectedplayer, wager });
+    if (!result?.success) return null;
+
+    return { selectedPlayer: selectedplayer, wager, balanceBefore: balance };
 }
 
 export function start(options = {}) {

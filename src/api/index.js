@@ -3,6 +3,7 @@ import {
     fighterRouter,
     listenerRouter,
     matchupRouter,
+    predictionRouter,
     remainingRouter,
     stateRouter,
 } from "./routers/index.js";
@@ -19,5 +20,6 @@ apiRouter.use(API_ROUTES.Bet, basicAuth, betRouter);
 apiRouter.use(API_ROUTES.Fighter, basicAuth, fighterRouter);
 apiRouter.use(API_ROUTES.Listener, basicAuth, listenerRouter);
 apiRouter.use(API_ROUTES.Matchup, basicAuth, matchupRouter);
+apiRouter.use(API_ROUTES.Prediction, basicAuth, predictionRouter);
 apiRouter.use(API_ROUTES.Remaining, basicAuth, remainingRouter);
 apiRouter.use(API_ROUTES.State, stateRouter);

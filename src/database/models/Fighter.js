@@ -11,6 +11,14 @@ export default (sequelize) => {
                 foreignKey: "p2Uuid",
                 as: "MatchupsAsP2",
             });
+            models.Fighter.hasMany(models.Prediction, {
+                foreignKey: "p1Uuid",
+                as: "PredictionsAsP1",
+            });
+            models.Fighter.hasMany(models.Prediction, {
+                foreignKey: "p2Uuid",
+                as: "PredictionsAsP2",
+            });
         }
     }
 

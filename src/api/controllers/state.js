@@ -3,7 +3,11 @@ import {
     SALTY_BET_BASE_URL,
     SALTY_BET_STATE_PATH,
 } from "../../constants/index.js";
-import { getWinRate, getWinRateFromData } from "../../shared/index.js";
+import {
+    getHeadToHead,
+    getWinRate,
+    getWinRateFromData,
+} from "../../shared/index.js";
 import db from "../../database/models/index.js";
 import { getBalance } from "../../shared/saltyBet.js";
 import { matchedData } from "express-validator";
@@ -81,21 +85,10 @@ export async function currentMatchData(req, res) {
           }
         : { name: data.p2name, matches: 0, wins: 0, losses: 0 };
 
-    let matchup;
-    if (p1Record && p2Record) {
-        const matchupRecord = await Matchup.findOne({
-            where: { p1Uuid: p1Record.uuid, p2Uuid: p2Record.uuid },
-        });
-        matchup = matchupRecord
-            ? {
-                  matches: matchupRecord.matches,
-                  p1Wins: matchupRecord.p1Wins,
-                  p2Wins: matchupRecord.p2Wins,
-              }
+    const matchup =
+        p1Record && p2Record
+            ? await getHeadToHead(p1Record.uuid, p2Record.uuid)
             : { matches: 0, p1Wins: 0, p2Wins: 0 };
-    } else {
-        matchup = { matches: 0, p1Wins: 0, p2Wins: 0 };
-    }
 
     const p1WinChance = getWinRateFromData(p1, p2, matchup);
     const p2WinChance = Math.round((100 - p1WinChance) * 100) / 100;

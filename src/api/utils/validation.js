@@ -29,4 +29,5 @@ export function validationErrorHandler(req, res, next) {
 
 export const findFighterByUuid = findByUuid(db.Fighter);
 export const findMatchupByUuid = findByUuid(db.Matchup);
+export const findPredictionByUuid = findByUuid(db.Prediction);
 export const findRemainingByUuid = findByUuid(db.Remaining);
