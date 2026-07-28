@@ -101,13 +101,19 @@ export async function placeBet({ selectedplayer, wager }) {
     }
 
     let result = await sendBet({ selectedplayer, wager });
+    if (result.success) return result;
 
-    if (!result.success) {
-        // The session may have expired; refresh it once and retry.
-        const authenticated = await authenticate();
-        if (authenticated) {
-            result = await sendBet({ selectedplayer, wager });
-        }
+    // A body other than "1" is not proof the bet was rejected, so re-sending it
+    // blindly risks a second live bet — and for an all-in wager the retry can
+    // never succeed, because the funds are already committed. Only retry for the
+    // case the retry exists for, an expired session; a readable balance proves
+    // the session is fine and the failure was something else.
+    const balance = await fetchBalance();
+    if (balance !== null) return result;
+
+    const authenticated = await authenticate();
+    if (authenticated) {
+        result = await sendBet({ selectedplayer, wager });
     }
 
     return result;
