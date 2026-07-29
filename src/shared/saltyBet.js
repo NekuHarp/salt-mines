@@ -59,10 +59,33 @@ export async function authenticate() {
 }
 
 /**
- * Sends a single place-bet request using the current session cookie.
- * The endpoint returns `1` on success and `0` on failure.
+ * Whether the place-bet endpoint's reply means the bet was taken.
+ *
+ * Two accepted replies are observed: a bare `"1"` (matchmaking and exhibition),
+ * and the balance with `1` appended (tournament) — `"15361"` at a balance of
+ * 1536. A rejected bet echoes the balance with no trailing flag (`"1536"`, e.g.
+ * betting once the window has closed).
+ *
+ * Both forms are accepted regardless of match mode, deliberately: mode can be
+ * deliberately overridden in the `Remaining` table (see the "17 characters are
+ * left in the bracket!" entry), so it is not something this can be keyed on.
+ *
+ * The balance is required to read the tournament form: for a balance ending in 1
+ * the accepted and rejected replies have the same shape (`"15311"` vs `"1531"`),
+ * so the body alone cannot distinguish them.
  */
-async function sendBet({ selectedplayer, wager }) {
+function isAccepted(responseBody, balance) {
+    if (responseBody === "1") return true;
+    if (balance === null || balance === undefined) return false;
+
+    return responseBody === `${balance}1`;
+}
+
+/**
+ * Sends a single place-bet request using the current session cookie.
+ * `balance` is the account balance the reply is interpreted against.
+ */
+async function sendBet({ selectedplayer, wager, balance }) {
     const body = new URLSearchParams({
         selectedplayer,
         wager: String(wager),
@@ -84,36 +107,54 @@ async function sendBet({ selectedplayer, wager }) {
     return {
         status: response.status,
         body: responseBody,
-        success: responseBody === "1",
+        success: isAccepted(responseBody, balance),
     };
 }
 
 /**
- * Places a bet, authenticating first if there is no session yet. If the bet
- * does not succeed (e.g. an expired session), re-authenticates once and retries.
+ * Places a bet, authenticating first if there is no session yet.
  *
- * @param {{ selectedplayer: string, wager: number }} bet
+ * `balance` is optional. The reply can only be interpreted against the balance
+ * (see isAccepted), so it is read here when the caller does not already have it;
+ * callers that just read it should pass it in to save a request. If it cannot be
+ * read at all, only the bare `"1"` reply can be recognised.
+ *
+ * @param {{ selectedplayer: string, wager: number, balance?: number }} bet
  * @returns {Promise<{ success: boolean, status: number, body: string }>}
  */
-export async function placeBet({ selectedplayer, wager }) {
+export async function placeBet({ selectedplayer, wager, balance }) {
     if (!sessionCookie) {
         await authenticate();
     }
 
-    let result = await sendBet({ selectedplayer, wager });
+    // getBalance re-authenticates when the balance can't be read, so this also
+    // refreshes an expired session before the bet is sent.
+    const knownBalance = balance ?? (await getBalance());
+
+    let result = await sendBet({
+        selectedplayer,
+        wager,
+        balance: knownBalance,
+    });
     if (result.success) return result;
 
-    // A body other than "1" is not proof the bet was rejected, so re-sending it
-    // blindly risks a second live bet — and for an all-in wager the retry can
-    // never succeed, because the funds are already committed. Only retry for the
-    // case the retry exists for, an expired session; a readable balance proves
-    // the session is fine and the failure was something else.
-    const balance = await fetchBalance();
-    if (balance !== null) return result;
+    // Re-sending is harmless in itself — Salty Bet keeps only the latest bet for
+    // a match, so a resend replaces rather than adds to it — but it is two wasted
+    // requests when it cannot help. A readable balance proves the session is
+    // alive, which means the rejection was something a resend will not fix (the
+    // window having closed, say), so only retry when the balance is unreadable
+    // and an expired session is the plausible cause. The balance stays valid for
+    // that retry: a rejected bet does not move it, and accepted wagers are only
+    // debited at settlement.
+    if ((await fetchBalance()) !== null) return result;
 
     const authenticated = await authenticate();
     if (authenticated) {
-        result = await sendBet({ selectedplayer, wager });
+        result = await sendBet({
+            selectedplayer,
+            wager,
+            balance: knownBalance,
+        });
     }
 
     return result;

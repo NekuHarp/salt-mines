@@ -270,6 +270,9 @@ function wagerPercent(mode, chance) {
  * it resolves, or null when no bet was placed. Returning a record for a
  * skipped or rejected bet would put a wager in the history that never left the
  * account, which is exactly what the log exists to rule out.
+ *
+ * The balance is passed to placeBet because the accept/reject reply can only be
+ * read against it, and passing it avoids a second read.
  */
 async function autoBet(data) {
     const mode = await resolveMatchMode(data.remaining);
@@ -287,26 +290,10 @@ async function autoBet(data) {
     const wager = Math.ceil((balance * wagerPercent(mode, chance)) / 100);
     if (wager < 1) return null;
 
-    const result = await placeBet({ selectedplayer, wager });
-    if (result?.success) {
-        return { selectedPlayer: selectedplayer, wager, balanceBefore: balance };
-    }
+    const result = await placeBet({ selectedplayer, wager, balance });
+    if (!result?.success) return null;
 
-    // placeBet infers success from the response body being exactly "1", which is
-    // not proof either way: the bet can land while the body is something else,
-    // and an all-in wager leaves no retry that could confirm it. The balance is
-    // the only hard evidence that money left the account, so check that before
-    // discarding a bet that may well be live.
-    const remainingBalance = await getBalance();
-    if (remainingBalance === null || remainingBalance >= balance) return null;
-
-    return {
-        selectedPlayer: selectedplayer,
-        // The observed decrease rather than the requested wager: the request was
-        // never acknowledged, so this is the amount actually committed.
-        wager: balance - remainingBalance,
-        balanceBefore: balance,
-    };
+    return { selectedPlayer: selectedplayer, wager, balanceBefore: balance };
 }
 
 export function start(options = {}) {
