@@ -32,6 +32,16 @@ npm run dev
 | `SALT_MINES_USER_PASSWORD` | Password for the API's HTTP Basic Auth                    |
 | `SALTY_BET_USER_EMAIL`     | Salty Bet account email (used to authenticate and bet)    |
 | `SALTY_BET_USER_PWORD`     | Salty Bet account password (used to authenticate and bet) |
+| `CORS_ALLOWED_ORIGINS`     | Comma-separated browser origins allowed to call the API   |
+
+`CORS_ALLOWED_ORIGINS` is unset or blank by default, which falls back to
+`http://localhost:5173` — the dev server of the
+[salt-mines-headquarters](../salt-mines-headquarters) frontend. Set it to the
+frontend's deployed origin in production, or to `none` to disable CORS entirely.
+Blank deliberately does *not* mean "disabled": an empty line copied from
+`.env.example` would otherwise lock every browser client out with no indication
+why. Credentials travel in the `Authorization` header rather than cookies, so
+`Access-Control-Allow-Credentials` is deliberately not set.
 
 The Salty Bet website URL is no longer an environment variable — it lives as a constant (`SALTY_BET_BASE_URL`) in `src/constants/app.js`.
 
