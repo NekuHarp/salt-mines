@@ -1,4 +1,5 @@
 import { DELETION_SUCCESSFUL_MSG } from "../../constants/index.js";
+import Sequelize from "sequelize";
 import db from "../../database/models/index.js";
 import { filterAll } from "../utils/index.js";
 import { matchedData } from "express-validator";
@@ -21,17 +22,39 @@ function matchupEagerLoadOptions() {
     return { include: includeList.length ? includeList : undefined };
 }
 
+/**
+ * "Either fighter is named like this", which preprocessWhere cannot build: the
+ * operator syntax ANDs its fields together and has no OR.
+ *
+ * Both fighters are always joined by matchupEagerLoadOptions, so the `$P1.name$`
+ * references always resolve.
+ */
+function eitherFighterNamed(fragment) {
+    if (!fragment) return undefined;
+
+    return [
+        { "$P1.name$": { [Sequelize.Op.substring]: fragment } },
+        { "$P2.name$": { [Sequelize.Op.substring]: fragment } },
+    ];
+}
+
 export async function listMatchups(req, res) {
     const query = matchedData(req, {
         locations: ["query"],
         includeOptionals: true,
     });
-    const { p1Uuid, p2Uuid } = query;
+    const { p1Uuid, p2Uuid, P1_name, P2_name, fighterNameContains } = query;
 
-    const findWhere = { p1Uuid, p2Uuid };
+    const findWhere = { p1Uuid, p2Uuid, P1_name, P2_name };
+
+    const { where, ...listOptions } = filterAll(query, findWhere);
+    const eitherSide = eitherFighterNamed(fighterNameContains);
 
     const matchupsAndCount = await Matchup.findAndCountAll({
-        ...filterAll(query, findWhere),
+        ...listOptions,
+        where: eitherSide
+            ? { ...where, [Sequelize.Op.or]: eitherSide }
+            : where,
         ...matchupEagerLoadOptions(),
     });
 

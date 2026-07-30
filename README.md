@@ -232,6 +232,12 @@ Advanced field filtering uses array query syntax: `?field[]=<operator>&field[]=<
 
 Available operators: `equals`, `not`, `contains`, `lte`, `gte`, `lt`, `gt`, `between`, `before`, `after`.
 
+Filterable fields — fighters: `name`. Matchups: `p1Uuid`, `p2Uuid`. Predictions:
+`p1Uuid`, `p2Uuid`, `P1_name`, `P2_name`, `mode`, `winner`, `selectedPlayer`,
+`betPlaced`, `p1WinChance`, `p1Total`, `p2Total`, `wager`, `balanceBefore`.
+Remainings: `mode`. A bare value means `equals`, so `?name=Foo` and
+`?name[]=equals&name[]=Foo` are the same query.
+
 ## Schemas
 
 ### Fighter
