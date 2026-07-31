@@ -43,6 +43,13 @@ Blank deliberately does *not* mean "disabled": an empty line copied from
 why. Credentials travel in the `Authorization` header rather than cookies, so
 `Access-Control-Allow-Credentials` is deliberately not set.
 
+Each entry must be a bare origin — scheme, host and port, no path. An `Origin`
+header never carries a trailing slash, so `https://example.app/` would match
+nothing a browser sends and the allowlist would silently reject the origin it
+appears to name; a trailing slash is therefore stripped on read. Note that a
+frontend served through a same-origin proxy (as the Netlify deployment is) needs
+no entry at all, because those requests are not cross-origin.
+
 The Salty Bet website URL is no longer an environment variable — it lives as a constant (`SALTY_BET_BASE_URL`) in `src/constants/app.js`.
 
 ## Authentication

@@ -15,6 +15,11 @@ const DEFAULT_CORS_ALLOWED_ORIGINS = "http://localhost:5173";
  * out of the box and a `CORS_ALLOWED_ORIGINS=` line left empty in a copied
  * .env.example doesn't silently lock every browser out. Disabling CORS is
  * therefore something you have to ask for by name, with `none`.
+ *
+ * A trailing slash is stripped from each entry. An `Origin` header is only ever
+ * scheme + host + port, so `https://example.app/` — which is what copying a URL
+ * out of the address bar gives you — would never match anything a browser sends,
+ * and the allowlist would silently reject the very origin it names.
  */
 export const CORS_ALLOWED_ORIGINS = (() => {
     const configured = (process.env.CORS_ALLOWED_ORIGINS ?? "").trim();
@@ -23,7 +28,7 @@ export const CORS_ALLOWED_ORIGINS = (() => {
 
     return (configured || DEFAULT_CORS_ALLOWED_ORIGINS)
         .split(",")
-        .map((origin) => origin.trim())
+        .map((origin) => origin.trim().replace(/\/+$/, ""))
         .filter(Boolean);
 })();
 
