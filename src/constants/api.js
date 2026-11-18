@@ -21,7 +21,7 @@ export const PAGINATION = Object.freeze({
     GENERIC: {
         LIMIT: {
             DEFAULT: 1000,
-            MAX: 50000,
+            MAX: 1000000,
         },
     },
 });
